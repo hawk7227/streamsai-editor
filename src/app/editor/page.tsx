@@ -212,6 +212,17 @@ window.addEventListener('message',(e)=>{
   if(e.data?.type==='applyStyle'){selEl.style[e.data.prop]=e.data.value;}
   if(e.data?.type==='setText'){selEl.innerText=e.data.value;}
 });
+// Scan ALL colors on page load
+setTimeout(()=>{
+  const colors=new Set();
+  document.querySelectorAll('*').forEach(el=>{
+    const cs=getComputedStyle(el);
+    [cs.color,cs.backgroundColor,cs.borderColor,cs.borderTopColor,cs.outlineColor].forEach(c=>{
+      if(c&&c!=='transparent'&&c!=='rgba(0, 0, 0, 0)'&&c!=='rgb(0, 0, 0)'){colors.add(c);}
+    });
+  });
+  window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
+},500);
 <\/script>
 </head><body><div id="root" style="width:${dev.w}px;height:${visH}px;overflow:auto;">${code}</div></body></html>`, [code, dev, brw, et, eb, visH]);
 
@@ -225,13 +236,12 @@ window.addEventListener('message',(e)=>{
     }, 250);
   }, [previewHTML, liveUrl]);
 
-  // ═══ ELEMENT SELECTION ═══
+  // ═══ ELEMENT SELECTION + COLOR SCAN ═══
   useEffect(() => {
     const h = (e: MessageEvent) => {
       if (e.data?.type === "sel") {
         setSel(e.data);
         setPanel("props");
-        // Extract colors for swatches
         const sty = e.data.sty;
         if (sty) {
           const colors = new Set(swatches);
@@ -240,8 +250,13 @@ window.addEventListener('message',(e)=>{
               colors.add(rgb2hex(c));
             }
           });
-          setSwatches(Array.from(colors).filter(c => c !== "transparent").slice(0, 20));
+          setSwatches(Array.from(colors).filter(c => c !== "transparent").slice(0, 30));
         }
+      }
+      if (e.data?.type === "allColors") {
+        const all = (e.data.colors || []).map((c: string) => rgb2hex(c)).filter((c: string) => c !== "transparent" && c !== "#000000" && c !== "#ffffff");
+        const unique = Array.from(new Set(all)) as string[];
+        setSwatches(unique.slice(0, 30));
       }
     };
     window.addEventListener("message", h);
