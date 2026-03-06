@@ -103,6 +103,7 @@ export default function VisualEditorPro() {
   const [activeSwatch, setActiveSwatch] = useState<string | null>(null);
   const [pushSt, setPushSt] = useState<string | null>(null);
   const [liveUrl, setLiveUrl] = useState("https://patient.medazonhealth.com/express-checkout");
+  const [lastLiveUrl, setLastLiveUrl] = useState("https://patient.medazonhealth.com/express-checkout");
   const [urlInput, setUrlInput] = useState("");
   const [ghFiles, setGhFiles] = useState<any[]>([]);
   const [ghLoading, setGhLoading] = useState(false);
@@ -271,13 +272,29 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
 
   useEffect(() => {
     if (!iframeRef.current) return;
-    if (liveUrl) { iframeRef.current.src = liveUrl; return; }
+    if (liveUrl) { iframeRef.current.src = liveUrl; setLastLiveUrl(liveUrl); return; }
     if (previewTimer.current) clearTimeout(previewTimer.current);
     previewTimer.current = setTimeout(() => {
       const blob = new Blob([previewHTML], { type: "text/html" });
       if (iframeRef.current) iframeRef.current.src = URL.createObjectURL(blob);
     }, 250);
   }, [previewHTML, liveUrl]);
+
+  // ═══ TRACK IFRAME NAVIGATION ═══
+  useEffect(() => {
+    if (!iframeRef.current) return;
+    const frame = iframeRef.current;
+    const onLoad = () => {
+      if (liveUrl) {
+        try {
+          const currentUrl = frame.contentWindow?.location?.href;
+          if (currentUrl && currentUrl !== "about:blank") { setLastLiveUrl(currentUrl); }
+        } catch { /* cross-origin, use the liveUrl we set */ }
+      }
+    };
+    frame.addEventListener("load", onLoad);
+    return () => frame.removeEventListener("load", onLoad);
+  }, [liveUrl]);
 
   // ═══ ELEMENT SELECTION + COLOR SCAN ═══
   useEffect(() => {
@@ -591,8 +608,19 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
         <Tb onClick={() => setPanel(panel === "github" ? null : "github")}>⬆️</Tb>
         <button onClick={() => {
           if (!inspectMode) {
-            // Switching TO inspect — if live URL loaded, switch to code preview
-            if (liveUrl) { setLiveUrl(""); }
+            // Switching TO inspect — grab current iframe content first
+            if (liveUrl && iframeRef.current) {
+              try {
+                const doc = iframeRef.current.contentDocument;
+                if (doc && doc.documentElement) {
+                  const html = doc.documentElement.outerHTML;
+                  setCode(html);
+                }
+              } catch {
+                // Cross-origin — can't read content, keep current code
+              }
+              setLiveUrl("");
+            }
             setInspectMode(true);
           } else {
             setInspectMode(false);
@@ -666,7 +694,7 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                 <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
                 {/* Inspect mode indicator */}
                 {inspectMode && !liveUrl && <div style={{ position: "absolute", top: 6, right: 6, display: "flex", gap: 4, zIndex: 10 }}>
-                  <button onClick={() => { setInspectMode(false); setLiveUrl("https://patient.medazonhealth.com/express-checkout"); }} style={{ padding: "3px 8px", borderRadius: 4, background: "rgba(45,212,160,0.9)", color: "#000", fontSize: 8, fontWeight: 700, border: "none", cursor: "pointer" }}>Back to Live</button>
+                  <button onClick={() => { setInspectMode(false); setLiveUrl(lastLiveUrl || "https://patient.medazonhealth.com/express-checkout"); }} style={{ padding: "3px 8px", borderRadius: 4, background: "rgba(45,212,160,0.9)", color: "#000", fontSize: 8, fontWeight: 700, border: "none", cursor: "pointer" }}>Back to Live</button>
                 </div>}
 
                 {/* SAFE ZONES */}
