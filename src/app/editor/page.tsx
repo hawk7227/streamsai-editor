@@ -99,6 +99,14 @@ export default function VisualEditorPro() {
   const [ghBranch, setGhBranch] = useState("main");
   const [ghPath, setGhPath] = useState("src/app/page.tsx");
   const [pushSt, setPushSt] = useState<string | null>(null);
+  const [liveUrl, setLiveUrl] = useState("");
+  const [urlInput, setUrlInput] = useState("");
+  const [ghFiles, setGhFiles] = useState<any[]>([]);
+  const [ghLoading, setGhLoading] = useState(false);
+  const [ghBrowsePath, setGhBrowsePath] = useState("");
+  const [monacoLoaded, setMonacoLoaded] = useState(false);
+  const monacoEditorRef = useRef<any>(null);
+  const monacoContainerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -185,12 +193,13 @@ window.addEventListener('message',(e)=>{
 
   useEffect(() => {
     if (!iframeRef.current) return;
+    if (liveUrl) { iframeRef.current.src = liveUrl; return; }
     if (previewTimer.current) clearTimeout(previewTimer.current);
     previewTimer.current = setTimeout(() => {
       const blob = new Blob([previewHTML], { type: "text/html" });
       if (iframeRef.current) iframeRef.current.src = URL.createObjectURL(blob);
     }, 250);
-  }, [previewHTML]);
+  }, [previewHTML, liveUrl]);
 
   // ═══ ELEMENT SELECTION ═══
   useEffect(() => {
@@ -252,6 +261,48 @@ window.addEventListener('message',(e)=>{
       setPushSt("✓"); setTimeout(() => setPushSt(null), 2000);
     } catch (err: any) { setPushSt("✗ " + err.message); setTimeout(() => setPushSt(null), 4000); }
   };
+
+  // ═══ GITHUB BROWSE ═══
+  const ghBrowse = async (path: string = "") => {
+    if (!ghToken || !ghRepo) return; setGhLoading(true);
+    try {
+      const r = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${path}?ref=${ghBranch}`, { headers: { Authorization: `Bearer ${ghToken}` } });
+      if (!r.ok) throw new Error("" + r.status);
+      const data = await r.json();
+      setGhFiles(Array.isArray(data) ? data : [data]); setGhBrowsePath(path);
+    } catch { setGhFiles([]); }
+    setGhLoading(false);
+  };
+  const ghLoadFile = async (path: string) => {
+    if (!ghToken || !ghRepo) return; setGhLoading(true);
+    try {
+      const r = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${path}?ref=${ghBranch}`, { headers: { Authorization: `Bearer ${ghToken}` } });
+      const data = await r.json();
+      if (data.content) { setCode(atob(data.content.replace(/\n/g, ""))); setGhPath(path); setLiveUrl(""); setPanel(null); }
+    } catch { /* ignore */ }
+    setGhLoading(false);
+  };
+
+  // ═══ URL LOAD ═══
+  const loadUrl = () => { if (!urlInput.trim()) return; setLiveUrl(urlInput.startsWith("http") ? urlInput : "https://" + urlInput); setPanel(null); };
+
+  // ═══ MONACO ═══
+  useEffect(() => {
+    if (panel !== "code") return;
+    if (monacoEditorRef.current) return;
+    if ((window as any).monaco) { initMon(); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js";
+    s.onload = () => { (window as any).require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs" } }); (window as any).require(["vs/editor/editor.main"], () => initMon()); };
+    document.head.appendChild(s);
+  }, [panel]);
+  const initMon = () => {
+    if (!monacoContainerRef.current || monacoEditorRef.current) return;
+    const ed = (window as any).monaco.editor.create(monacoContainerRef.current, { value: code, language: "typescript", theme: "vs-dark", fontSize: 12, minimap: { enabled: false }, wordWrap: "on", scrollBeyondLastLine: false, padding: { top: 8 } });
+    ed.onDidChangeModelContent(() => setCode(ed.getValue()));
+    monacoEditorRef.current = ed; setMonacoLoaded(true);
+  };
+  useEffect(() => { if (monacoEditorRef.current && monacoEditorRef.current.getValue() !== code) monacoEditorRef.current.setValue(code); }, [code]);
 
   const rgb2hex = (rgb: string) => { if (!rgb || rgb === "transparent" || rgb.includes("0, 0, 0, 0")) return "transparent"; const m = rgb.match(/\d+/g); if (!m || m.length < 3) return rgb; return "#" + m.slice(0, 3).map((n: string) => parseInt(n).toString(16).padStart(2, "0")).join(""); };
   const sc = { critical: "#ef4444", high: "#f97316", medium: "#eab308" };
@@ -366,6 +417,7 @@ window.addEventListener('message',(e)=>{
         <Tb onClick={() => imgRef.current?.click()}>🖼️</Tb>
         <input ref={imgRef} type="file" accept="image/*" onChange={onImg} style={{ display: "none" }} />
         <Tb onClick={download}>💾</Tb>
+        <Tb onClick={() => setPanel(panel === "url" ? null : "url")}>🔗</Tb>
         <Tb onClick={() => setPanel(panel === "code" ? null : "code")}>&lt;/&gt;</Tb>
         <Tb onClick={() => setPanel(panel === "github" ? null : "github")}>⬆️</Tb>
         <span style={{ fontSize: 9, color: saveStatus === "saved" ? "#2dd4a0" : "#f59e0b" }}>●</span>
@@ -454,7 +506,7 @@ window.addEventListener('message',(e)=>{
             {/* Panel header */}
             <div style={{ flexShrink: 0, height: 36, background: "#0c0d0f", borderBottom: "1px solid #1f2937", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px" }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: "#f97316" }}>
-                {panel === "props" ? "🔍 Properties" : panel === "devices" ? "📱 All Devices" : panel === "warnings" ? "⚠️ Warnings" : panel === "code" ? "</> Code" : panel === "image" ? "🖼️ Image AI" : "⬆️ GitHub"}
+                {panel === "props" ? "Properties" : panel === "devices" ? "Devices" : panel === "warnings" ? "Warnings" : panel === "code" ? "Code" : panel === "image" ? "Image AI" : panel === "url" ? "Load URL" : "GitHub"}
               </span>
               <button onClick={() => { setPanel(null); setSel(null); }} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 14 }}>✕</button>
             </div>
@@ -537,9 +589,24 @@ window.addEventListener('message',(e)=>{
               ))}
 
               {/* CODE */}
-              {panel === "code" && <div>
-                <textarea value={code} onChange={e => setCode(e.target.value)} spellCheck={false}
-                  style={{ width: "100%", height: "calc(100vh - 200px)", background: "#08090a", color: "#e5e7eb", border: "1px solid #1f2937", borderRadius: 6, padding: 10, fontSize: 12, fontFamily: "'JetBrains Mono',monospace", resize: "none", outline: "none", lineHeight: 1.5 }} />
+              {/* CODE — Monaco */}
+              {panel === "code" && <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 160px)" }}>
+                <div ref={monacoContainerRef} style={{ flex: 1, minHeight: 300 }} />
+                {!monacoLoaded && <textarea value={code} onChange={e => setCode(e.target.value)} spellCheck={false}
+                  style={{ width: "100%", flex: 1, minHeight: 300, background: "#08090a", color: "#e5e7eb", border: "1px solid #1f2937", borderRadius: 6, padding: 10, fontSize: 12, fontFamily: "monospace", resize: "none", outline: "none", lineHeight: 1.5 }} />}
+              </div>}
+
+              {/* URL */}
+              {panel === "url" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <p style={{ fontSize: 10, color: "#9ca3af" }}>Load a live page into the device frame.</p>
+                <input value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="patient.medazonhealth.com" onKeyDown={e => e.key === "Enter" && loadUrl()} style={{ width: "100%", padding: "7px 9px", borderRadius: 5, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 11, fontFamily: "monospace", outline: "none" }} />
+                <button onClick={loadUrl} style={{ padding: "8px", borderRadius: 5, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 11, border: "none", cursor: "pointer" }}>Load URL</button>
+                {liveUrl && <button onClick={() => { setLiveUrl(""); setPanel(null); }} style={{ padding: "6px", borderRadius: 5, background: "#1a1b1e", color: "#e5e7eb", fontSize: 10, border: "1px solid #1f2937", cursor: "pointer" }}>Clear URL</button>}
+                <div style={{ fontSize: 9, color: "#4b5563", marginTop: 4 }}>
+                  {["patient.medazonhealth.com/express-checkout","patient.medazonhealth.com","doctor.medazonhealth.com"].map(u =>
+                    <button key={u} onClick={() => { setLiveUrl("https://"+u); setPanel(null); }} style={{ display: "block", background: "none", border: "none", color: "#2dd4a0", cursor: "pointer", fontSize: 9, padding: "2px 0" }}>{u}</button>
+                  )}
+                </div>
               </div>}
 
               {/* IMAGE AI */}
@@ -570,14 +637,27 @@ window.addEventListener('message',(e)=>{
                   </div>
               )}
 
-              {/* GITHUB */}
-              {panel === "github" && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {/* GITHUB — with file browser */}
+              {panel === "github" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <GhInp label="Token" type="password" value={ghToken} onChange={e => setGhToken(e.target.value)} ph="ghp_..." />
-                <GhInp label="Repo" value={ghRepo} onChange={e => setGhRepo(e.target.value)} ph="owner/repo" />
+                <GhInp label="Repo" value={ghRepo} onChange={e => setGhRepo(e.target.value)} ph="hawk7227/patientpanel" />
                 <GhInp label="Branch" value={ghBranch} onChange={e => setGhBranch(e.target.value)} />
-                <GhInp label="Path" value={ghPath} onChange={e => setGhPath(e.target.value)} />
-                <button onClick={push} style={{ width: "100%", padding: "10px", borderRadius: 6, background: "linear-gradient(135deg,#f97316,#ea8a2e)", color: "#fff", fontWeight: 700, fontSize: 12, border: "none", cursor: "pointer" }}>Push →</button>
-                <button onClick={download} style={{ width: "100%", padding: "10px", borderRadius: 6, background: "#1a1b1e", color: "#e5e7eb", fontWeight: 500, fontSize: 12, border: "1px solid #1f2937", cursor: "pointer" }}>💾 Download</button>
+                <GhInp label="File path" value={ghPath} onChange={e => setGhPath(e.target.value)} />
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button onClick={() => ghBrowse(ghBrowsePath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#1f2937", color: "#e5e7eb", fontWeight: 600, fontSize: 10, border: "1px solid #374151", cursor: "pointer" }}>Browse</button>
+                  <button onClick={push} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#f97316", color: "#fff", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Push</button>
+                </div>
+                <button onClick={download} style={{ padding: "7px", borderRadius: 5, background: "#1a1b1e", color: "#e5e7eb", fontSize: 10, border: "1px solid #1f2937", cursor: "pointer" }}>Download</button>
+                {pushSt && <span style={{ fontSize: 10, color: pushSt.includes("✗") ? "#f87171" : "#2dd4a0" }}>{pushSt}</span>}
+                {ghLoading && <p style={{ fontSize: 10, color: "#6b7280" }}>Loading...</p>}
+                {ghBrowsePath && <button onClick={() => ghBrowse(ghBrowsePath.split("/").slice(0,-1).join("/"))} style={{ background: "none", border: "none", color: "#2dd4a0", cursor: "pointer", fontSize: 9, textAlign: "left" }}>.. (up)</button>}
+                {ghFiles.map((f: any, i: number) =>
+                  <button key={i} onClick={() => f.type === "dir" ? ghBrowse(f.path) : ghLoadFile(f.path)} style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", cursor: "pointer", textAlign: "left" }}>
+                    <span style={{ fontSize: 10 }}>{f.type === "dir" ? "📁" : "📄"}</span>
+                    <span style={{ fontSize: 10, color: "#e5e7eb", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                    {f.size && <span style={{ fontSize: 8, color: "#4b5563" }}>{(f.size/1024).toFixed(1)}k</span>}
+                  </button>
+                )}
               </div>}
             </div>
           </div>
