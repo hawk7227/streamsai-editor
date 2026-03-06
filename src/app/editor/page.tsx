@@ -272,7 +272,13 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
 
   useEffect(() => {
     if (!iframeRef.current) return;
-    if (liveUrl) { iframeRef.current.src = liveUrl; setLastLiveUrl(liveUrl); return; }
+    if (liveUrl) {
+      // Route through proxy to make iframe same-origin (enables inspect)
+      const proxyUrl = `/api/proxy?url=${encodeURIComponent(liveUrl)}`;
+      iframeRef.current.src = proxyUrl;
+      setLastLiveUrl(liveUrl);
+      return;
+    }
     if (previewTimer.current) clearTimeout(previewTimer.current);
     previewTimer.current = setTimeout(() => {
       const blob = new Blob([previewHTML], { type: "text/html" });
