@@ -531,7 +531,15 @@ window.addEventListener('message',(e)=>{
         <Tb onClick={() => setPanel(panel === "url" ? null : "url")}>🔗</Tb>
         <Tb onClick={() => setPanel(panel === "code" ? null : "code")}>&lt;/&gt;</Tb>
         <Tb onClick={() => setPanel(panel === "github" ? null : "github")}>⬆️</Tb>
-        <button onClick={() => setInspectMode(!inspectMode)} style={{ height: 28, padding: "0 10px", borderRadius: 5, background: inspectMode ? "#f97316" : "#1a1b1e", border: inspectMode ? "1px solid #f97316" : "1px solid #1f2937", color: inspectMode ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+        <button onClick={() => {
+          if (!inspectMode) {
+            // Switching TO inspect — if live URL loaded, switch to code preview
+            if (liveUrl) { setLiveUrl(""); }
+            setInspectMode(true);
+          } else {
+            setInspectMode(false);
+          }
+        }} style={{ height: 28, padding: "0 10px", borderRadius: 5, background: inspectMode ? "#f97316" : "#1a1b1e", border: inspectMode ? "1px solid #f97316" : "1px solid #1f2937", color: inspectMode ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
           {inspectMode ? "👆 INSPECT" : "🖱️ BROWSE"}
         </button>
         <S />
@@ -586,7 +594,7 @@ window.addEventListener('message',(e)=>{
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
         {/* ═══ CENTER: DEVICE PREVIEW ═══ */}
-        <div ref={containerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#050607", transition: "all 0.2s" }}>
+        <div ref={containerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "auto", background: "#050607", transition: "all 0.2s" }}>
           <div style={{ transform: `scale(${zoom > 0 ? zoom : autoScale})`, transformOrigin: "center center", transition: "transform 0.15s" }}>
             <div style={{ width: dev.w + 2, position: "relative", borderRadius: dev.r, overflow: "hidden", boxShadow: "0 0 0 1px #1f2937, 0 25px 80px rgba(0,0,0,0.6)", background: "#000" }}>
 
@@ -598,9 +606,9 @@ window.addEventListener('message',(e)=>{
               {/* Content */}
               <div style={{ width: dev.w, height: visH, position: "relative" }}>
                 <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
-                {/* Inspect mode note for live URLs */}
-                {inspectMode && liveUrl && <div style={{ position: "absolute", top: 8, left: 8, right: 8, background: "rgba(249,115,22,0.9)", color: "#000", fontSize: 9, fontWeight: 700, padding: "4px 8px", borderRadius: 4, textAlign: "center", pointerEvents: "none" }}>
-                  Inspect mode: Pull the file first (GitHub panel) to inspect elements
+                {/* Inspect mode indicator */}
+                {inspectMode && !liveUrl && <div style={{ position: "absolute", top: 6, right: 6, display: "flex", gap: 4, zIndex: 10 }}>
+                  <button onClick={() => { setInspectMode(false); setLiveUrl("https://patient.medazonhealth.com/express-checkout"); }} style={{ padding: "3px 8px", borderRadius: 4, background: "rgba(45,212,160,0.9)", color: "#000", fontSize: 8, fontWeight: 700, border: "none", cursor: "pointer" }}>Back to Live</button>
                 </div>}
 
                 {/* SAFE ZONES */}
@@ -863,7 +871,7 @@ window.addEventListener('message',(e)=>{
             </div>
 
             {/* Frame 2 preview */}
-            <div ref={f2ContainerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#050607" }}>
+            <div ref={f2ContainerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "auto", background: "#050607" }}>
               {dalleResult && f2Mode !== "url" ? (
                 <div style={{ transform: `scale(${f2Scale})`, transformOrigin: "center center" }}>
                   <div style={{ width: ((D as any)[f2Did] || D["i15p"]).w + 2, borderRadius: ((D as any)[f2Did] || D["i15p"]).r, overflow: "hidden", boxShadow: "0 0 0 2px #374151, 0 20px 60px rgba(0,0,0,.5)", background: "#000" }}>
