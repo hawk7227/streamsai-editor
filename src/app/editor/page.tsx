@@ -87,19 +87,22 @@ export default function VisualEditorPro() {
   const [code, setCode] = useState(DEFAULT_CODE);
   const [did, setDid] = useState("i15p");
   const [bid, setBid] = useState("saf");
-  const [zones, setZones] = useState(true);
+  const [zones, setZones] = useState(false);
   const [measures, setMeasures] = useState(true);
   const [sel, setSel] = useState<any>(null);
-  const [panel, setPanel] = useState<string | null>(null); // null | "props" | "devices" | "warnings" | "code"
+  const [panel, setPanel] = useState<string | null>(null);
   const [imgResult, setImgResult] = useState<any>(null);
   const [imgAnalyzing, setImgAnalyzing] = useState(false);
   const [saveStatus, setSaveStatus] = useState("saved");
   const [ghToken, setGhToken] = useState("");
-  const [ghRepo, setGhRepo] = useState("");
-  const [ghBranch, setGhBranch] = useState("main");
-  const [ghPath, setGhPath] = useState("src/app/page.tsx");
+  const [ghRepo, setGhRepo] = useState("hawk7227/patientpanel");
+  const [ghBranch, setGhBranch] = useState("master");
+  const [ghPath, setGhPath] = useState("src/app/express-checkout/page.tsx");
+  const [inspectMode, setInspectMode] = useState(false);
+  const [swatches, setSwatches] = useState<string[]>([]);
+  const [activeSwatch, setActiveSwatch] = useState<string | null>(null);
   const [pushSt, setPushSt] = useState<string | null>(null);
-  const [liveUrl, setLiveUrl] = useState("");
+  const [liveUrl, setLiveUrl] = useState("https://patient.medazonhealth.com/express-checkout");
   const [urlInput, setUrlInput] = useState("");
   const [ghFiles, setGhFiles] = useState<any[]>([]);
   const [ghLoading, setGhLoading] = useState(false);
@@ -203,10 +206,26 @@ window.addEventListener('message',(e)=>{
 
   // ═══ ELEMENT SELECTION ═══
   useEffect(() => {
-    const h = (e: MessageEvent) => { if (e.data?.type === "sel") { setSel(e.data); setPanel("props"); } };
+    const h = (e: MessageEvent) => {
+      if (e.data?.type === "sel") {
+        setSel(e.data);
+        setPanel("props");
+        // Extract colors for swatches
+        const sty = e.data.sty;
+        if (sty) {
+          const colors = new Set(swatches);
+          [sty.color, sty.backgroundColor, sty.borderColor].forEach((c: string) => {
+            if (c && c !== "transparent" && !c.includes("0, 0, 0, 0") && c !== "rgba(0, 0, 0, 0)") {
+              colors.add(rgb2hex(c));
+            }
+          });
+          setSwatches(Array.from(colors).filter(c => c !== "transparent").slice(0, 20));
+        }
+      }
+    };
     window.addEventListener("message", h);
     return () => window.removeEventListener("message", h);
-  }, []);
+  }, [swatches]);
 
   // ═══ FILE ═══
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -420,18 +439,34 @@ window.addEventListener('message',(e)=>{
         <Tb onClick={() => setPanel(panel === "url" ? null : "url")}>🔗</Tb>
         <Tb onClick={() => setPanel(panel === "code" ? null : "code")}>&lt;/&gt;</Tb>
         <Tb onClick={() => setPanel(panel === "github" ? null : "github")}>⬆️</Tb>
+        <button onClick={() => setInspectMode(!inspectMode)} style={{ height: 28, padding: "0 10px", borderRadius: 5, background: inspectMode ? "#f97316" : "#1a1b1e", border: inspectMode ? "1px solid #f97316" : "1px solid #1f2937", color: inspectMode ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+          {inspectMode ? "👆 INSPECT" : "🖱️ BROWSE"}
+        </button>
         <span style={{ fontSize: 9, color: saveStatus === "saved" ? "#2dd4a0" : "#f59e0b" }}>●</span>
         {pushSt && <span style={{ fontSize: 9, color: pushSt.includes("✗") ? "#f87171" : "#2dd4a0" }}>{pushSt}</span>}
       </div>
 
+      {/* ═══ COLOR SWATCHES BAR ═══ */}
+      {swatches.length > 0 && <div style={{ flexShrink: 0, height: 32, background: "#08090a", borderBottom: "1px solid #111318", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, overflow: "auto" }}>
+        <span style={{ fontSize: 8, color: "#4b5563", fontWeight: 700, marginRight: 4, flexShrink: 0 }}>COLORS</span>
+        {swatches.map((c, i) => (
+          <button key={i} onClick={() => {
+            if (sel && activeSwatch !== c) { applyStyle("color", c); setActiveSwatch(c); }
+            else if (sel) { applyStyle("backgroundColor", c); setActiveSwatch(null); }
+          }} style={{ width: 22, height: 22, borderRadius: 4, background: c, border: activeSwatch === c ? "2px solid #fff" : "1px solid #333", cursor: "pointer", flexShrink: 0 }} title={c} />
+        ))}
+        <button onClick={() => setSwatches([])} style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 8, marginLeft: 4 }}>clear</button>
+      </div>}
+
       {/* ═══ INFO BAR ═══ */}
       <div style={{ flexShrink: 0, height: 24, background: "#08090a", borderBottom: "1px solid #111318", display: "flex", alignItems: "center", padding: "0 12px", gap: 10, fontSize: 9, color: "#4b5563" }}>
+        <span style={{ fontWeight: 700, color: inspectMode ? "#f97316" : "#2dd4a0" }}>{inspectMode ? "INSPECT" : "BROWSE"}</span>
+        {liveUrl && <span style={{ color: "#2dd4a0", fontWeight: 600 }}>LIVE</span>}
         <span style={{ fontWeight: 600, color: "#9ca3af" }}>{dev.n}</span>
-        <span>{dev.w}×{dev.h}</span>
-        <span>Visible: {visH}px</span>
-        <span>Safe: {safeH}px</span>
-        <span>↑{et} ↓{eb}</span>
-        {overflow > 0 && <span style={{ color: "#ef4444" }}>⚠ 100vh +{overflow}px</span>}
+        <span>{dev.w}x{dev.h}</span>
+        <span>Vis:{visH}px</span>
+        <span>Safe:{safeH}px</span>
+        {overflow > 0 && <span style={{ color: "#ef4444" }}>100vh +{overflow}px</span>}
         <div style={{ flex: 1 }} />
         <label style={{ display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
           <input type="checkbox" checked={zones} onChange={e => setZones(e.target.checked)} style={{ accentColor: "#ef4444", width: 10, height: 10 }} />
@@ -461,7 +496,20 @@ window.addEventListener('message',(e)=>{
 
               {/* Content */}
               <div style={{ width: dev.w, height: visH, position: "relative" }}>
-                <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block" }} sandbox="allow-scripts" />
+                <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block", pointerEvents: inspectMode ? "none" : "auto" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
+                {/* Inspect overlay — captures clicks only in inspect mode */}
+                {inspectMode && <div onClick={(e) => { e.stopPropagation(); }} style={{ position: "absolute", inset: 0, cursor: "crosshair" }}
+                  onMouseMove={(e) => {
+                    if (!iframeRef.current?.contentWindow) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    iframeRef.current.contentWindow.postMessage({ type: "ep-hover", x: e.clientX - rect.left, y: e.clientY - rect.top }, "*");
+                  }}
+                  onClickCapture={(e) => {
+                    if (!iframeRef.current?.contentWindow) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    iframeRef.current.contentWindow.postMessage({ type: "ep-click", x: e.clientX - rect.left, y: e.clientY - rect.top }, "*");
+                  }}
+                />}
 
                 {/* SAFE ZONES */}
                 {zones && <>
