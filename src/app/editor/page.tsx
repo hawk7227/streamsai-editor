@@ -142,6 +142,7 @@ html,body{width:${dev.w}px;height:${visH}px;overflow:hidden;background:#000;font
 <script src="https://cdn.tailwindcss.com"><\/script>
 <script>
 let lastEl=null;
+let selEl=null;
 document.addEventListener('mouseover',(e)=>{
   if(lastEl)lastEl.style.outline='';
   e.target.style.outline='2px solid rgba(249,115,22,0.4)';
@@ -150,7 +151,7 @@ document.addEventListener('mouseover',(e)=>{
 document.addEventListener('mouseout',(e)=>{e.target.style.outline='';});
 document.addEventListener('click',(e)=>{
   e.preventDefault();e.stopPropagation();
-  const el=e.target;const cs=getComputedStyle(el);const r=el.getBoundingClientRect();
+  selEl=e.target;const el=e.target;const cs=getComputedStyle(el);const r=el.getBoundingClientRect();
   // Get outer HTML snippet
   const clone=el.cloneNode(false);
   const tag=clone.outerHTML.slice(0,200);
@@ -173,6 +174,11 @@ document.addEventListener('click',(e)=>{
       transform:cs.transform,transition:cs.transition,
     }
   },'*');
+});
+window.addEventListener('message',(e)=>{
+  if(!selEl)return;
+  if(e.data?.type==='applyStyle'){selEl.style[e.data.prop]=e.data.value;}
+  if(e.data?.type==='setText'){selEl.innerText=e.data.value;}
 });
 <\/script>
 </head><body><div id="root" style="width:${dev.w}px;height:${visH}px;overflow:auto;">${code}</div></body></html>`, [code, dev, brw, et, eb, visH]);
@@ -258,6 +264,22 @@ document.addEventListener('click',(e)=>{
     if (dev.c === "and") w.push(WARN[5]);
     return w;
   }, [did]);
+
+  // ═══ APPLY STYLE — sends to iframe + updates sel state ═══
+  const applyStyle = useCallback((prop: string, value: string) => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'applyStyle', prop, value }, '*');
+    }
+    // Update local sel state so the panel reflects the change
+    setSel((prev: any) => prev ? { ...prev, sty: { ...prev.sty, [prop]: value } } : prev);
+  }, []);
+
+  const applyText = useCallback((value: string) => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({ type: 'setText', value }, '*');
+    }
+    setSel((prev: any) => prev ? { ...prev, txt: value } : prev);
+  }, []);
 
   // ═══ STYLE GROUPS for inspector ═══
   const styleGroups = useMemo(() => {
@@ -449,17 +471,35 @@ document.addEventListener('click',(e)=>{
                 {sel.rect && <div style={{ background: "#111318", borderRadius: 6, padding: 8, border: "1px solid #1f2937", marginBottom: 10, display: "flex", gap: 12, fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>
                   <span>x:{sel.rect.x}</span><span>y:{sel.rect.y}</span><span>w:{sel.rect.w}</span><span>h:{sel.rect.h}</span>
                 </div>}
+                {/* Editable text */}
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 9, color: "#4b5563", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Content</div>
+                  <input value={sel.txt || ""} onChange={e => applyText(e.target.value)} style={{ width: "100%", background: "#111318", border: "1px solid #1f2937", borderRadius: 5, padding: "6px 8px", fontSize: 11, color: "#e5e7eb", fontFamily: "monospace", outline: "none" }} />
+                </div>
                 {styleGroups.map((g, gi) => (
                   <div key={gi} style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 9, color: "#4b5563", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{g.label}</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                       {g.items.filter(i => i.v && i.v !== "none" && i.v !== "normal" && i.v !== "0px" && i.v !== "auto" && i.v !== "static" && i.v !== "visible" && i.v !== "transparent" && !i.v.includes("0, 0, 0, 0")).map((item, ii) => (
                         <div key={ii} style={{ display: "flex", alignItems: "center", gap: 6, background: "#111318", borderRadius: 5, padding: "5px 8px", border: "1px solid #1f2937" }}>
-                          {item.type === "color" && <span style={{ width: 14, height: 14, borderRadius: 3, background: item.v, border: "1px solid #333", flexShrink: 0 }} />}
-                          <span style={{ fontSize: 9, color: "#6b7280", minWidth: 60, flexShrink: 0 }}>{item.k.replace(/([A-Z])/g, '-$1').toLowerCase()}</span>
-                          <span style={{ fontSize: 10, color: "#e5e7eb", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                            {item.type === "color" ? rgb2hex(item.v) : item.v}
-                          </span>
+                          {/* Color picker */}
+                          {item.type === "color" && <div style={{ width: 22, height: 22, borderRadius: 4, background: item.v, border: "1px solid #333", flexShrink: 0, cursor: "pointer", position: "relative", overflow: "hidden" }}>
+                            <input type="color" value={rgb2hex(item.v)} onChange={e => applyStyle(item.k, e.target.value)} style={{ position: "absolute", inset: -4, opacity: 0, cursor: "pointer", width: "140%", height: "140%" }} />
+                          </div>}
+                          <span style={{ fontSize: 8, color: "#6b7280", minWidth: 55, flexShrink: 0 }}>{item.k.replace(/([A-Z])/g, '-$1').toLowerCase()}</span>
+                          {/* Size slider + input */}
+                          {item.type === "size" && <>
+                            <input type="range" min={0} max={100} step={1} value={parseFloat(item.v) || 0} onChange={e => applyStyle(item.k, e.target.value + "px")} style={{ flex: 1, accentColor: "#f97316", height: 3, cursor: "pointer" }} />
+                            <input value={item.v} onChange={e => applyStyle(item.k, e.target.value)} style={{ width: 52, background: "#0a0b0d", border: "1px solid #1f2937", borderRadius: 3, padding: "2px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none", textAlign: "right" }} />
+                          </>}
+                          {/* Select dropdown */}
+                          {item.type === "select" && <select value={item.v} onChange={e => applyStyle(item.k, e.target.value)} style={{ flex: 1, background: "#0a0b0d", border: "1px solid #1f2937", borderRadius: 3, padding: "3px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none", cursor: "pointer" }}>
+                            {item.opts?.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>}
+                          {/* Text input */}
+                          {item.type === "text" && <input value={item.v} onChange={e => applyStyle(item.k, e.target.value)} style={{ flex: 1, background: "#0a0b0d", border: "1px solid #1f2937", borderRadius: 3, padding: "2px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none" }} />}
+                          {/* Color text input alongside picker */}
+                          {item.type === "color" && <input value={rgb2hex(item.v)} onChange={e => applyStyle(item.k, e.target.value)} style={{ flex: 1, background: "#0a0b0d", border: "1px solid #1f2937", borderRadius: 3, padding: "2px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none" }} />}
                         </div>
                       ))}
                     </div>
