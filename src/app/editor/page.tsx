@@ -124,7 +124,49 @@ export default function VisualEditorPro() {
   const [dalleLoading, setDalleLoading] = useState(false);
   const f2IframeRef = useRef<HTMLIFrameElement>(null);
   const f2ContainerRef = useRef<HTMLDivElement>(null);
-  const [f2Scale, setF2Scale] = useState(0.5); // 0 = auto, >0 = manual
+  const [f2Scale, setF2Scale] = useState(0.5);
+  // Chat panel
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<{role:string;content:string}[]>([
+    { role: "assistant", content: "I'm Claude, integrated into EditorPro. I can help you with code, design, debugging. Ask me anything about your project." }
+  ]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [claudeKey, setClaudeKey] = useState("");
+
+  // Persist Claude key
+  useEffect(() => { try { const k = localStorage.getItem("ep-claude-key"); if (k) setClaudeKey(k); } catch {} }, []);
+  useEffect(() => { if (claudeKey) try { localStorage.setItem("ep-claude-key", claudeKey); } catch {} }, [claudeKey]);
+
+  const sendChat = async () => {
+    if (!chatInput.trim()) return;
+    const userMsg = { role: "user", content: chatInput };
+    setChatMessages(prev => [...prev, userMsg]);
+    setChatInput("");
+    setChatLoading(true);
+    try {
+      // Use Anthropic API if key available, otherwise show message
+      if (!claudeKey) {
+        setChatMessages(prev => [...prev, { role: "assistant", content: "Add your Anthropic API key in the GitHub panel settings to enable Claude chat." }]);
+        setChatLoading(false);
+        return;
+      }
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": claudeKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 2000,
+          messages: [...chatMessages.filter(m => m.role !== "assistant" || chatMessages.indexOf(m) > 0).map(m => ({ role: m.role, content: m.content })), { role: "user", content: chatInput }],
+          system: "You are a design and code assistant integrated into EditorPro, a visual page editor. Help with CSS, colors, layout, React/Next.js code, and design decisions. Be concise."
+        })
+      });
+      const data = await r.json();
+      const txt = data.content?.find((b: any) => b.type === "text")?.text || "No response";
+      setChatMessages(prev => [...prev, { role: "assistant", content: txt }]);
+    } catch (err: any) {
+      setChatMessages(prev => [...prev, { role: "assistant", content: "Error: " + err.message }]);
+    }
+    setChatLoading(false);
+  }; // 0 = auto, >0 = manual
   const [monacoLoaded, setMonacoLoaded] = useState(false);
   const monacoEditorRef = useRef<any>(null);
   const monacoContainerRef = useRef<HTMLDivElement>(null);
@@ -273,9 +315,13 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
   useEffect(() => {
     if (!iframeRef.current) return;
     if (liveUrl) {
-      // Route through proxy to make iframe same-origin (enables inspect)
-      const proxyUrl = `/api/proxy?url=${encodeURIComponent(liveUrl)}`;
-      iframeRef.current.src = proxyUrl;
+      // In browse mode: load directly (interactive, cross-origin is fine)
+      // In inspect mode: try proxy (same-origin, enables element selection)
+      if (inspectMode) {
+        iframeRef.current.src = `/api/proxy?url=${encodeURIComponent(liveUrl)}`;
+      } else {
+        iframeRef.current.src = liveUrl;
+      }
       setLastLiveUrl(liveUrl);
       return;
     }
@@ -284,7 +330,7 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
       const blob = new Blob([previewHTML], { type: "text/html" });
       if (iframeRef.current) iframeRef.current.src = URL.createObjectURL(blob);
     }, 250);
-  }, [previewHTML, liveUrl]);
+  }, [previewHTML, liveUrl, inspectMode]);
 
   // ═══ TRACK IFRAME NAVIGATION ═══
   useEffect(() => {
@@ -597,6 +643,7 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
           <div style={{ width: 24, height: 24, borderRadius: 5, background: "linear-gradient(135deg,#2dd4a0,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 11, color: "#000" }}>M</div>
           <span style={{ fontWeight: 700, fontSize: 13 }}>Editor<span style={{ color: "#2dd4a0" }}>Pro</span></span>
         </div>
+        <button onClick={() => setChatOpen(!chatOpen)} style={{ height: 28, padding: "0 8px", borderRadius: 5, background: chatOpen ? "#2dd4a0" : "#1a1b1e", border: chatOpen ? "1px solid #2dd4a0" : "1px solid #1f2937", color: chatOpen ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>💬</button>
         <S />
 
         {/* Device quick select */}
@@ -679,7 +726,34 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
       {/* ═══ MAIN ═══ */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-        {/* ═══ CENTER: DEVICE PREVIEW ═══ */}
+        {/* ═══ LEFT: CHAT / BROWSER PANEL ═══ */}
+        <div style={{ width: chatOpen ? 420 : 0, flexShrink: 0, background: "#0a0b0d", borderRight: chatOpen ? "1px solid #1f2937" : "none", display: "flex", flexDirection: "column", overflow: "hidden", transition: "width 0.2s" }}>
+          {chatOpen && <>
+            <div style={{ flexShrink: 0, height: 32, background: "#0c0d0f", borderBottom: "1px solid #1f2937", display: "flex", alignItems: "center", padding: "0 8px", gap: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#2dd4a0" }}>Claude Chat</span>
+              <div style={{ flex: 1 }} />
+              <button onClick={() => setChatOpen(false)} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 12 }}>x</button>
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ flex: 1, overflow: "auto", padding: 8 }}>
+                {chatMessages.map((m, i) => (
+                  <div key={i} style={{ marginBottom: 8, display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
+                    <div style={{ maxWidth: "85%", padding: "8px 12px", borderRadius: 12, background: m.role === "user" ? "#2dd4a0" : "#1f2937", color: m.role === "user" ? "#000" : "#e5e7eb", fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                      {m.content}
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && <div style={{ fontSize: 10, color: "#6b7280", padding: 4 }}>Thinking...</div>}
+              </div>
+              <div style={{ flexShrink: 0, padding: 8, borderTop: "1px solid #1f2937", display: "flex", gap: 4 }}>
+                <input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Ask Claude..." onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }}} style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 11, outline: "none" }} />
+                <button onClick={sendChat} disabled={chatLoading} style={{ padding: "8px 12px", borderRadius: 8, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Send</button>
+              </div>
+            </div>
+          </>}
+        </div>
+
+        {/* ═══ DEVICE PREVIEW (now on right side) ═══ */}
         <div ref={containerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "auto", background: "#050607", transition: "all 0.2s" }}>
           <div style={{ transform: `scale(${zoom > 0 ? zoom : autoScale})`, transformOrigin: "center center", transition: "transform 0.15s" }}>
             <div style={{ width: dev.w + 2, position: "relative", borderRadius: dev.r, overflow: "hidden", boxShadow: "0 0 0 1px #1f2937, 0 25px 80px rgba(0,0,0,0.6)", background: "#000" }}>
@@ -918,7 +992,8 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
 
               {/* GITHUB — with file browser */}
               {panel === "github" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <GhInp label="Token (saved)" type="password" value={ghToken} onChange={e => setGhToken(e.target.value)} ph="ghp_..." />
+                <GhInp label="GitHub Token (saved)" type="password" value={ghToken} onChange={e => setGhToken(e.target.value)} ph="ghp_..." />
+                <GhInp label="Claude API Key (for chat)" type="password" value={claudeKey} onChange={e => setClaudeKey(e.target.value)} ph="sk-ant-..." />
                 {/* Repo dropdown */}
                 <label style={{ fontSize: 9, color: "#6b7280" }}>Repo
                   <select value={ghRepo} onChange={e => { setGhRepo(e.target.value); setGhBrowsePath(""); setGhFiles([]); }} style={{ display: "block", width: "100%", marginTop: 2, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 10, outline: "none" }}>
