@@ -315,13 +315,8 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
   useEffect(() => {
     if (!iframeRef.current) return;
     if (liveUrl) {
-      // In browse mode: load directly (interactive, cross-origin is fine)
-      // In inspect mode: try proxy (same-origin, enables element selection)
-      if (inspectMode) {
-        iframeRef.current.src = `/api/proxy?url=${encodeURIComponent(liveUrl)}`;
-      } else {
-        iframeRef.current.src = liveUrl;
-      }
+      // Always load URL directly — proxy breaks React apps
+      iframeRef.current.src = liveUrl;
       setLastLiveUrl(liveUrl);
       return;
     }
@@ -330,7 +325,7 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
       const blob = new Blob([previewHTML], { type: "text/html" });
       if (iframeRef.current) iframeRef.current.src = URL.createObjectURL(blob);
     }, 250);
-  }, [previewHTML, liveUrl, inspectMode]);
+  }, [previewHTML, liveUrl]);
 
   // ═══ TRACK IFRAME NAVIGATION ═══
   useEffect(() => {
