@@ -109,7 +109,21 @@ export default function VisualEditorPro() {
   const [ghBrowsePath, setGhBrowsePath] = useState("");
   const [ghRepos, setGhRepos] = useState<any[]>([]);
   const [ghFileList, setGhFileList] = useState<string[]>([]);
-  const [zoom, setZoom] = useState(0); // 0 = auto, >0 = manual
+  const [zoom, setZoom] = useState(0);
+  // Frame 2 state
+  const [f2Open, setF2Open] = useState(false);
+  const [f2Url, setF2Url] = useState("");
+  const [f2Code, setF2Code] = useState("");
+  const [f2Did, setF2Did] = useState("i15p");
+  const [f2Mode, setF2Mode] = useState<"url" | "gen" | "upload">("url");
+  // DALL-E
+  const [dalleKey, setDalleKey] = useState("");
+  const [dallePrompt, setDallePrompt] = useState("");
+  const [dalleResult, setDalleResult] = useState<string | null>(null);
+  const [dalleLoading, setDalleLoading] = useState(false);
+  const f2IframeRef = useRef<HTMLIFrameElement>(null);
+  const f2ContainerRef = useRef<HTMLDivElement>(null);
+  const [f2Scale, setF2Scale] = useState(0.5); // 0 = auto, >0 = manual
   const [monacoLoaded, setMonacoLoaded] = useState(false);
   const monacoEditorRef = useRef<any>(null);
   const monacoContainerRef = useRef<HTMLDivElement>(null);
@@ -338,6 +352,51 @@ window.addEventListener('message',(e)=>{
   // ═══ URL LOAD ═══
   const loadUrl = () => { if (!urlInput.trim()) return; setLiveUrl(urlInput.startsWith("http") ? urlInput : "https://" + urlInput); setPanel(null); };
 
+  // ═══ DALL-E ═══
+  useEffect(() => { try { const k = localStorage.getItem("ep-dalle-key"); if (k) setDalleKey(k); } catch {} }, []);
+  useEffect(() => { if (dalleKey) try { localStorage.setItem("ep-dalle-key", dalleKey); } catch {} }, [dalleKey]);
+  const generateImage = async () => {
+    if (!dalleKey || !dallePrompt.trim()) return;
+    setDalleLoading(true); setDalleResult(null);
+    try {
+      const r = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${dalleKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "dall-e-3", prompt: dallePrompt, n: 1, size: "1024x1792", quality: "hd" })
+      });
+      const data = await r.json();
+      if (data.data?.[0]?.url) { setDalleResult(data.data[0].url); }
+      else { setDalleResult(null); }
+    } catch (err: any) { /* ignore */ }
+    setDalleLoading(false);
+  };
+
+  // ═══ FRAME 2 — scale ═══
+  useEffect(() => {
+    if (!f2ContainerRef.current || !f2Open) return;
+    const ro = new ResizeObserver(([e]) => {
+      const { width: cw, height: ch } = e.contentRect;
+      const d2 = (D as any)[f2Did] || D["i15p"];
+      const sx = Math.max(0.15, (cw - 20) / (d2.w + 4));
+      const sy = Math.max(0.15, (ch - 20) / (d2.h + 30));
+      setF2Scale(Math.min(sx, sy, 1));
+    });
+    ro.observe(f2ContainerRef.current);
+    return () => ro.disconnect();
+  }, [f2Did, f2Open]);
+
+  // ═══ FRAME 2 — load URL ═══
+  useEffect(() => {
+    if (!f2IframeRef.current || !f2Open) return;
+    if (f2Url) { f2IframeRef.current.src = f2Url; }
+    else if (f2Code) {
+      const d2 = (D as any)[f2Did] || D["i15p"];
+      const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}html,body{width:' + d2.w + 'px;overflow:auto;background:#000;font-family:system-ui;}</style></head><body>' + f2Code + '</body></html>';
+      const blob = new Blob([html], { type: "text/html" });
+      f2IframeRef.current.src = URL.createObjectURL(blob);
+    }
+  }, [f2Url, f2Code, f2Did, f2Open]);
+
   // ═══ MONACO ═══
   useEffect(() => {
     if (panel !== "code") return;
@@ -480,6 +539,10 @@ window.addEventListener('message',(e)=>{
         <span style={{ fontSize: 9, color: "#9ca3af", minWidth: 30, textAlign: "center" }}>{Math.round((zoom > 0 ? zoom : autoScale) * 100)}%</span>
         <Tb onClick={() => { const cur = zoom > 0 ? zoom : autoScale; setZoom(Math.max(0.15, cur - 0.1)); }}>-</Tb>
         <Tb onClick={() => setZoom(0)}>↺</Tb>
+        <S />
+        <button onClick={() => setF2Open(!f2Open)} style={{ height: 28, padding: "0 8px", borderRadius: 5, background: f2Open ? "#2dd4a0" : "#1a1b1e", border: f2Open ? "1px solid #2dd4a0" : "1px solid #1f2937", color: f2Open ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
+          {f2Open ? "📱📱" : "📱+"}
+        </button>
         <span style={{ fontSize: 9, color: saveStatus === "saved" ? "#2dd4a0" : "#f59e0b" }}>●</span>
         {pushSt && <span style={{ fontSize: 9, color: pushSt.includes("✗") ? "#f87171" : "#2dd4a0" }}>{pushSt}</span>}
       </div>
@@ -753,6 +816,67 @@ window.addEventListener('message',(e)=>{
                   )}
                 </>}
               </div>}
+            </div>
+          </div>
+        )}
+
+        {/* ═══ FRAME 2 — DUAL PHONE ═══ */}
+        {f2Open && (
+          <div style={{ width: 420, flexShrink: 0, background: "#08090a", borderLeft: "1px solid #1f2937", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {/* Frame 2 toolbar */}
+            <div style={{ flexShrink: 0, height: 32, background: "#0c0d0f", borderBottom: "1px solid #1f2937", display: "flex", alignItems: "center", padding: "0 8px", gap: 4 }}>
+              <button onClick={() => setF2Mode("url")} style={{ padding: "3px 8px", borderRadius: 4, background: f2Mode === "url" ? "#1f2937" : "transparent", border: "none", color: f2Mode === "url" ? "#fff" : "#6b7280", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>URL</button>
+              <button onClick={() => setF2Mode("gen")} style={{ padding: "3px 8px", borderRadius: 4, background: f2Mode === "gen" ? "#1f2937" : "transparent", border: "none", color: f2Mode === "gen" ? "#fff" : "#6b7280", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>AI Gen</button>
+              <button onClick={() => setF2Mode("upload")} style={{ padding: "3px 8px", borderRadius: 4, background: f2Mode === "upload" ? "#1f2937" : "transparent", border: "none", color: f2Mode === "upload" ? "#fff" : "#6b7280", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>Upload</button>
+              <div style={{ flex: 1 }} />
+              {/* Device selector for frame 2 */}
+              <select value={f2Did} onChange={e => setF2Did(e.target.value)} style={{ background: "#111318", border: "1px solid #1f2937", borderRadius: 3, color: "#e5e7eb", fontSize: 8, padding: "2px 4px", outline: "none" }}>
+                {Object.entries(D).map(([k, d]) => <option key={k} value={k}>{d.n}</option>)}
+              </select>
+              <button onClick={() => setF2Open(false)} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 12 }}>x</button>
+            </div>
+
+            {/* Frame 2 input area */}
+            <div style={{ flexShrink: 0, padding: 8, borderBottom: "1px solid #1f2937" }}>
+              {f2Mode === "url" && <div style={{ display: "flex", gap: 4 }}>
+                <input value={f2Url} onChange={e => setF2Url(e.target.value)} placeholder="Paste URL..." onKeyDown={e => e.key === "Enter" && setF2Url(f2Url.startsWith("http") ? f2Url : "https://" + f2Url)} style={{ flex: 1, padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 9, outline: "none" }} />
+                <button onClick={() => { if (!f2Url.startsWith("http")) setF2Url("https://" + f2Url); }} style={{ padding: "5px 8px", borderRadius: 4, background: "#2dd4a0", color: "#000", fontSize: 9, fontWeight: 700, border: "none", cursor: "pointer" }}>Go</button>
+              </div>}
+              {f2Mode === "gen" && <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <input value={dalleKey} onChange={e => setDalleKey(e.target.value)} placeholder="OpenAI API Key (saved)" type="password" style={{ padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 9, outline: "none" }} />
+                <div style={{ display: "flex", gap: 4 }}>
+                  <input value={dallePrompt} onChange={e => setDallePrompt(e.target.value)} placeholder="Describe the design..." onKeyDown={e => e.key === "Enter" && generateImage()} style={{ flex: 1, padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 9, outline: "none" }} />
+                  <button onClick={generateImage} disabled={dalleLoading} style={{ padding: "5px 10px", borderRadius: 4, background: dalleLoading ? "#374151" : "#7c3aed", color: "#fff", fontSize: 9, fontWeight: 700, border: "none", cursor: "pointer" }}>
+                    {dalleLoading ? "..." : "Generate"}
+                  </button>
+                </div>
+                <p style={{ fontSize: 8, color: "#4b5563" }}>DALL-E 3 generates mobile UI designs at 1024x1792</p>
+              </div>}
+              {f2Mode === "upload" && <div>
+                <input type="file" accept="image/*" onChange={e => {
+                  const f = e.target.files?.[0]; if (!f) return;
+                  const r = new FileReader();
+                  r.onload = ev => { if (typeof ev.target?.result === "string") setDalleResult(ev.target.result); };
+                  r.readAsDataURL(f);
+                }} style={{ fontSize: 9, color: "#6b7280" }} />
+              </div>}
+            </div>
+
+            {/* Frame 2 preview */}
+            <div ref={f2ContainerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#050607" }}>
+              {dalleResult && f2Mode !== "url" ? (
+                <div style={{ transform: `scale(${f2Scale})`, transformOrigin: "center center" }}>
+                  <div style={{ width: ((D as any)[f2Did] || D["i15p"]).w + 2, borderRadius: ((D as any)[f2Did] || D["i15p"]).r, overflow: "hidden", boxShadow: "0 0 0 2px #374151, 0 20px 60px rgba(0,0,0,.5)", background: "#000" }}>
+                    <img src={dalleResult} alt="Generated" style={{ width: "100%", display: "block" }} />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ transform: `scale(${f2Scale})`, transformOrigin: "center center" }}>
+                  <div style={{ width: ((D as any)[f2Did] || D["i15p"]).w + 2, height: ((D as any)[f2Did] || D["i15p"]).h, borderRadius: ((D as any)[f2Did] || D["i15p"]).r, overflow: "hidden", boxShadow: "0 0 0 2px #374151, 0 20px 60px rgba(0,0,0,.5)", background: "#111" }}>
+                    <iframe ref={f2IframeRef} style={{ width: ((D as any)[f2Did] || D["i15p"]).w, height: ((D as any)[f2Did] || D["i15p"]).h, border: "none", display: "block" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
