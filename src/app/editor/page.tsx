@@ -504,18 +504,29 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
 
   // ═══ APPLY STYLE — sends to iframe + updates sel state ═══
   const applyStyle = useCallback((prop: string, value: string) => {
+    // Try direct DOM manipulation first (same-origin)
+    setSel((prev: any) => {
+      if (prev?._el) {
+        try { prev._el.style[prop] = value; } catch { /* ignore */ }
+      }
+      return prev ? { ...prev, sty: { ...prev.sty, [prop]: value } } : prev;
+    });
+    // Also try postMessage for code-based previews
     if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage({ type: 'applyStyle', prop, value }, '*');
+      try { iframeRef.current.contentWindow.postMessage({ type: 'applyStyle', prop, value }, '*'); } catch { /* ignore */ }
     }
-    // Update local sel state so the panel reflects the change
-    setSel((prev: any) => prev ? { ...prev, sty: { ...prev.sty, [prop]: value } } : prev);
   }, []);
 
   const applyText = useCallback((value: string) => {
+    setSel((prev: any) => {
+      if (prev?._el) {
+        try { prev._el.innerText = value; } catch { /* ignore */ }
+      }
+      return prev ? { ...prev, txt: value } : prev;
+    });
     if (iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage({ type: 'setText', value }, '*');
+      try { iframeRef.current.contentWindow.postMessage({ type: 'setText', value }, '*'); } catch { /* ignore */ }
     }
-    setSel((prev: any) => prev ? { ...prev, txt: value } : prev);
   }, []);
 
   // ═══ STYLE GROUPS for inspector ═══
@@ -607,24 +618,7 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
         <Tb onClick={() => setPanel(panel === "code" ? null : "code")}>&lt;/&gt;</Tb>
         <Tb onClick={() => setPanel(panel === "github" ? null : "github")}>⬆️</Tb>
         <button onClick={() => {
-          if (!inspectMode) {
-            // Switching TO inspect — grab current iframe content first
-            if (liveUrl && iframeRef.current) {
-              try {
-                const doc = iframeRef.current.contentDocument;
-                if (doc && doc.documentElement) {
-                  const html = doc.documentElement.outerHTML;
-                  setCode(html);
-                }
-              } catch {
-                // Cross-origin — can't read content, keep current code
-              }
-              setLiveUrl("");
-            }
-            setInspectMode(true);
-          } else {
-            setInspectMode(false);
-          }
+          setInspectMode(!inspectMode);
         }} style={{ height: 28, padding: "0 10px", borderRadius: 5, background: inspectMode ? "#f97316" : "#1a1b1e", border: inspectMode ? "1px solid #f97316" : "1px solid #1f2937", color: inspectMode ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
           {inspectMode ? "👆 INSPECT" : "🖱️ BROWSE"}
         </button>
@@ -691,11 +685,56 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
 
               {/* Content */}
               <div style={{ width: dev.w, height: visH, position: "relative" }}>
-                <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
-                {/* Inspect mode indicator */}
-                {inspectMode && !liveUrl && <div style={{ position: "absolute", top: 6, right: 6, display: "flex", gap: 4, zIndex: 10 }}>
-                  <button onClick={() => { setInspectMode(false); setLiveUrl(lastLiveUrl || "https://patient.medazonhealth.com/express-checkout"); }} style={{ padding: "3px 8px", borderRadius: 4, background: "rgba(45,212,160,0.9)", color: "#000", fontSize: 8, fontWeight: 700, border: "none", cursor: "pointer" }}>Back to Live</button>
-                </div>}
+                <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block", pointerEvents: inspectMode ? "none" : "auto" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
+                {/* Inspect overlay — blocks iframe clicks, captures position */}
+                {inspectMode && <div style={{ position: "absolute", inset: 0, cursor: "crosshair", zIndex: 5 }}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const scale = zoom > 0 ? zoom : autoScale;
+                    // Try to get element at click point from iframe
+                    try {
+                      const doc = iframeRef.current?.contentDocument;
+                      if (doc) {
+                        const el = doc.elementFromPoint(x, y);
+                        if (el) {
+                          const cs = getComputedStyle(el);
+                          const r = el.getBoundingClientRect();
+                          setSel({
+                            type: "sel", tag: el.tagName.toLowerCase(),
+                            txt: (el.textContent || "").slice(0, 100),
+                            rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+                            sty: {
+                              color: cs.color, backgroundColor: cs.backgroundColor,
+                              fontSize: cs.fontSize, fontWeight: cs.fontWeight, fontFamily: cs.fontFamily,
+                              textAlign: cs.textAlign, lineHeight: cs.lineHeight, letterSpacing: cs.letterSpacing,
+                              paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, paddingLeft: cs.paddingLeft, paddingRight: cs.paddingRight,
+                              marginTop: cs.marginTop, marginBottom: cs.marginBottom,
+                              width: cs.width, height: cs.height, maxWidth: cs.maxWidth,
+                              border: cs.border, borderRadius: cs.borderRadius, boxShadow: cs.boxShadow,
+                              display: cs.display, position: cs.position, flexDirection: cs.flexDirection,
+                              justifyContent: cs.justifyContent, alignItems: cs.alignItems, gap: cs.gap,
+                              overflow: cs.overflow, opacity: cs.opacity, background: cs.background,
+                            },
+                            _el: el, // Keep reference for applying styles
+                          });
+                          setPanel("props");
+                          // Extract colors
+                          const colors = new Set(swatches);
+                          [cs.color, cs.backgroundColor].forEach(c => {
+                            if (c && c !== "transparent" && !c.includes("0, 0, 0, 0")) colors.add(rgb2hex(c));
+                          });
+                          setSwatches(Array.from(colors).filter(c => c !== "transparent").slice(0, 30));
+                        }
+                      }
+                    } catch {
+                      // Cross-origin — show message
+                      setSel({ type: "sel", tag: "?", txt: "Cross-origin: pull file from GitHub to inspect", rect: { x: Math.round(x), y: Math.round(y), w: 0, h: 0 }, sty: {} });
+                      setPanel("props");
+                    }
+                  }}
+                />}
 
                 {/* SAFE ZONES */}
                 {zones && <>
