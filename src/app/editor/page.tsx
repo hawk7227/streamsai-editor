@@ -107,12 +107,19 @@ export default function VisualEditorPro() {
   const [ghFiles, setGhFiles] = useState<any[]>([]);
   const [ghLoading, setGhLoading] = useState(false);
   const [ghBrowsePath, setGhBrowsePath] = useState("");
+  const [ghRepos, setGhRepos] = useState<any[]>([]);
+  const [ghFileList, setGhFileList] = useState<string[]>([]);
+  const [zoom, setZoom] = useState(0); // 0 = auto, >0 = manual
   const [monacoLoaded, setMonacoLoaded] = useState(false);
   const monacoEditorRef = useRef<any>(null);
   const monacoContainerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
+
+  // Persist token to localStorage
+  useEffect(() => { try { const t = localStorage.getItem("ep-gh-token"); if (t) setGhToken(t); } catch {} }, []);
+  useEffect(() => { if (ghToken) try { localStorage.setItem("ep-gh-token", ghToken); } catch {} }, [ghToken]);
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -281,6 +288,32 @@ window.addEventListener('message',(e)=>{
     } catch (err: any) { setPushSt("✗ " + err.message); setTimeout(() => setPushSt(null), 4000); }
   };
 
+  // ═══ GITHUB — fetch repos ═══
+  const ghFetchRepos = async () => {
+    if (!ghToken) return;
+    try {
+      const r = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated", { headers: { Authorization: `Bearer ${ghToken}` } });
+      if (r.ok) { const data = await r.json(); setGhRepos(data); }
+    } catch { /* ignore */ }
+  };
+  useEffect(() => { if (ghToken && ghRepos.length === 0) ghFetchRepos(); }, [ghToken]);
+
+  // ═══ GITHUB — fetch file tree for dropdown ═══
+  const ghFetchFileTree = async (repo: string, branch: string, path: string = "") => {
+    if (!ghToken || !repo) return;
+    setGhLoading(true);
+    try {
+      const r = await fetch(`https://api.github.com/repos/${repo}/git/trees/${branch}?recursive=1`, { headers: { Authorization: `Bearer ${ghToken}` } });
+      if (r.ok) {
+        const data = await r.json();
+        const files = (data.tree || []).filter((f: any) => f.type === "blob" && (f.path.endsWith(".tsx") || f.path.endsWith(".ts") || f.path.endsWith(".jsx") || f.path.endsWith(".html") || f.path.endsWith(".css"))).map((f: any) => f.path);
+        setGhFileList(files);
+      }
+    } catch { /* ignore */ }
+    setGhLoading(false);
+  };
+  useEffect(() => { if (ghToken && ghRepo) ghFetchFileTree(ghRepo, ghBranch); }, [ghRepo, ghBranch, ghToken]);
+
   // ═══ GITHUB BROWSE ═══
   const ghBrowse = async (path: string = "") => {
     if (!ghToken || !ghRepo) return; setGhLoading(true);
@@ -442,6 +475,11 @@ window.addEventListener('message',(e)=>{
         <button onClick={() => setInspectMode(!inspectMode)} style={{ height: 28, padding: "0 10px", borderRadius: 5, background: inspectMode ? "#f97316" : "#1a1b1e", border: inspectMode ? "1px solid #f97316" : "1px solid #1f2937", color: inspectMode ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
           {inspectMode ? "👆 INSPECT" : "🖱️ BROWSE"}
         </button>
+        <S />
+        <Tb onClick={() => { const cur = zoom > 0 ? zoom : autoScale; setZoom(Math.min(2, cur + 0.1)); }}>+</Tb>
+        <span style={{ fontSize: 9, color: "#9ca3af", minWidth: 30, textAlign: "center" }}>{Math.round((zoom > 0 ? zoom : autoScale) * 100)}%</span>
+        <Tb onClick={() => { const cur = zoom > 0 ? zoom : autoScale; setZoom(Math.max(0.15, cur - 0.1)); }}>-</Tb>
+        <Tb onClick={() => setZoom(0)}>↺</Tb>
         <span style={{ fontSize: 9, color: saveStatus === "saved" ? "#2dd4a0" : "#f59e0b" }}>●</span>
         {pushSt && <span style={{ fontSize: 9, color: pushSt.includes("✗") ? "#f87171" : "#2dd4a0" }}>{pushSt}</span>}
       </div>
@@ -486,7 +524,7 @@ window.addEventListener('message',(e)=>{
 
         {/* ═══ CENTER: DEVICE PREVIEW ═══ */}
         <div ref={containerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#050607", transition: "all 0.2s" }}>
-          <div style={{ transform: `scale(${autoScale})`, transformOrigin: "center center", transition: "transform 0.15s" }}>
+          <div style={{ transform: `scale(${zoom > 0 ? zoom : autoScale})`, transformOrigin: "center center", transition: "transform 0.15s" }}>
             <div style={{ width: dev.w + 2, position: "relative", borderRadius: dev.r, overflow: "hidden", boxShadow: "0 0 0 1px #1f2937, 0 25px 80px rgba(0,0,0,0.6)", background: "#000" }}>
 
               {/* Top chrome */}
@@ -496,20 +534,11 @@ window.addEventListener('message',(e)=>{
 
               {/* Content */}
               <div style={{ width: dev.w, height: visH, position: "relative" }}>
-                <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block", pointerEvents: inspectMode ? "none" : "auto" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
-                {/* Inspect overlay — captures clicks only in inspect mode */}
-                {inspectMode && <div onClick={(e) => { e.stopPropagation(); }} style={{ position: "absolute", inset: 0, cursor: "crosshair" }}
-                  onMouseMove={(e) => {
-                    if (!iframeRef.current?.contentWindow) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    iframeRef.current.contentWindow.postMessage({ type: "ep-hover", x: e.clientX - rect.left, y: e.clientY - rect.top }, "*");
-                  }}
-                  onClickCapture={(e) => {
-                    if (!iframeRef.current?.contentWindow) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    iframeRef.current.contentWindow.postMessage({ type: "ep-click", x: e.clientX - rect.left, y: e.clientY - rect.top }, "*");
-                  }}
-                />}
+                <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
+                {/* Inspect mode note for live URLs */}
+                {inspectMode && liveUrl && <div style={{ position: "absolute", top: 8, left: 8, right: 8, background: "rgba(249,115,22,0.9)", color: "#000", fontSize: 9, fontWeight: 700, padding: "4px 8px", borderRadius: 4, textAlign: "center", pointerEvents: "none" }}>
+                  Inspect mode: Pull the file first (GitHub panel) to inspect elements
+                </div>}
 
                 {/* SAFE ZONES */}
                 {zones && <>
@@ -687,25 +716,42 @@ window.addEventListener('message',(e)=>{
 
               {/* GITHUB — with file browser */}
               {panel === "github" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <GhInp label="Token" type="password" value={ghToken} onChange={e => setGhToken(e.target.value)} ph="ghp_..." />
-                <GhInp label="Repo" value={ghRepo} onChange={e => setGhRepo(e.target.value)} ph="hawk7227/patientpanel" />
+                <GhInp label="Token (saved)" type="password" value={ghToken} onChange={e => setGhToken(e.target.value)} ph="ghp_..." />
+                {/* Repo dropdown */}
+                <label style={{ fontSize: 9, color: "#6b7280" }}>Repo
+                  <select value={ghRepo} onChange={e => { setGhRepo(e.target.value); setGhBrowsePath(""); setGhFiles([]); }} style={{ display: "block", width: "100%", marginTop: 2, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 10, outline: "none" }}>
+                    <option value="">Select repo...</option>
+                    {ghRepos.map((r: any) => <option key={r.full_name} value={r.full_name}>{r.full_name}</option>)}
+                  </select>
+                </label>
                 <GhInp label="Branch" value={ghBranch} onChange={e => setGhBranch(e.target.value)} />
-                <GhInp label="File path" value={ghPath} onChange={e => setGhPath(e.target.value)} />
+                {/* File dropdown */}
+                <label style={{ fontSize: 9, color: "#6b7280" }}>File
+                  <select value={ghPath} onChange={e => { setGhPath(e.target.value); if (e.target.value) ghLoadFile(e.target.value); }} style={{ display: "block", width: "100%", marginTop: 2, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 10, outline: "none" }}>
+                    <option value="">Select file...</option>
+                    {ghFileList.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </label>
                 <div style={{ display: "flex", gap: 4 }}>
                   <button onClick={() => ghBrowse(ghBrowsePath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#1f2937", color: "#e5e7eb", fontWeight: 600, fontSize: 10, border: "1px solid #374151", cursor: "pointer" }}>Browse</button>
+                  <button onClick={() => ghLoadFile(ghPath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Pull</button>
                   <button onClick={push} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#f97316", color: "#fff", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Push</button>
                 </div>
                 <button onClick={download} style={{ padding: "7px", borderRadius: 5, background: "#1a1b1e", color: "#e5e7eb", fontSize: 10, border: "1px solid #1f2937", cursor: "pointer" }}>Download</button>
                 {pushSt && <span style={{ fontSize: 10, color: pushSt.includes("✗") ? "#f87171" : "#2dd4a0" }}>{pushSt}</span>}
                 {ghLoading && <p style={{ fontSize: 10, color: "#6b7280" }}>Loading...</p>}
-                {ghBrowsePath && <button onClick={() => ghBrowse(ghBrowsePath.split("/").slice(0,-1).join("/"))} style={{ background: "none", border: "none", color: "#2dd4a0", cursor: "pointer", fontSize: 9, textAlign: "left" }}>.. (up)</button>}
-                {ghFiles.map((f: any, i: number) =>
-                  <button key={i} onClick={() => f.type === "dir" ? ghBrowse(f.path) : ghLoadFile(f.path)} style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", cursor: "pointer", textAlign: "left" }}>
-                    <span style={{ fontSize: 10 }}>{f.type === "dir" ? "📁" : "📄"}</span>
-                    <span style={{ fontSize: 10, color: "#e5e7eb", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                    {f.size && <span style={{ fontSize: 8, color: "#4b5563" }}>{(f.size/1024).toFixed(1)}k</span>}
-                  </button>
-                )}
+                {/* File tree browser */}
+                {ghFiles.length > 0 && <>
+                  <div style={{ fontSize: 8, color: "#4b5563", fontWeight: 700, textTransform: "uppercase", marginTop: 4 }}>Browse: /{ghBrowsePath}</div>
+                  {ghBrowsePath && <button onClick={() => ghBrowse(ghBrowsePath.split("/").slice(0,-1).join("/"))} style={{ background: "none", border: "none", color: "#2dd4a0", cursor: "pointer", fontSize: 9, textAlign: "left" }}>📁 ..</button>}
+                  {ghFiles.map((f: any, i: number) =>
+                    <button key={i} onClick={() => f.type === "dir" ? ghBrowse(f.path) : ghLoadFile(f.path)} style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", cursor: "pointer", textAlign: "left" }}>
+                      <span style={{ fontSize: 10 }}>{f.type === "dir" ? "📁" : "📄"}</span>
+                      <span style={{ fontSize: 10, color: "#e5e7eb", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
+                      {f.size && <span style={{ fontSize: 8, color: "#4b5563" }}>{(f.size/1024).toFixed(1)}k</span>}
+                    </button>
+                  )}
+                </>}
               </div>}
             </div>
           </div>
