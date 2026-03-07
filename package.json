@@ -1,21 +1,21 @@
 {
-  "name": "streams-editor",
+  "name": "streamsai-workspace",
   "version": "1.0.0",
   "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
-  "dependencies": {
-    "next": "14.2.15",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:chat": "npm run dev --workspace=apps/mobile-chat",
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:chat\"",
+    "build:web": "npm run build --workspace=apps/web",
+    "build:chat": "npm run build --workspace=apps/mobile-chat",
+    "build": "npm run build:chat && npm run build:web",
+    "typecheck": "npm run typecheck --workspace=apps/web && npm run typecheck --workspace=apps/mobile-chat",
+    "lint": "npm run lint --workspace=apps/web && npm run lint --workspace=apps/mobile-chat"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "typescript": "^5"
+    "concurrently": "^8.2.2"
   }
 }

@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "buildCommand": "cd ../.. && npm run build:chat",
+  "outputDirectory": "apps/mobile-chat/dist",
+  "installCommand": "cd ../.. && npm install",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "ALLOWALL" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    }
+  ]
+}

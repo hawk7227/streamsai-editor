@@ -1,4 +1,9 @@
 node_modules
 .next
 out
+dist
 .env*.local
+.env
+apps/web/.next
+apps/web/out
+apps/mobile-chat/dist
