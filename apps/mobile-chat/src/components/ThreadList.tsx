@@ -42,7 +42,7 @@ export function ThreadList() {
     }}>
       {/* Header */}
       <div style={{
-        paddingTop: `max(${spacing[4]}, env(safe-area-inset-top))`,
+        paddingTop: `calc(${spacing[4]} + env(safe-area-inset-top, 0px))`,
         paddingBottom: spacing[3],
         paddingLeft: spacing[4],
         paddingRight: spacing[4],

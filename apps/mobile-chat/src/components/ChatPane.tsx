@@ -22,21 +22,35 @@ export function ChatPane() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: color.bg }}>
-      {/* Thread header — with iOS safe area top */}
+      {/* Status bar color fill — bleeds behind Safari URL bar area */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0,
+        height: 'env(safe-area-inset-top, 0px)',
+        background: color.bgPanel,
+        zIndex: 1,
+      }} />
+
+      {/* Thread header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: spacing[3],
-        paddingTop: `max(${spacing[3]}, env(safe-area-inset-top))`,
+        paddingTop: `calc(${spacing[4]} + env(safe-area-inset-top, 0px))`,
         paddingBottom: spacing[3],
         paddingLeft: spacing[4],
         paddingRight: spacing[4],
         borderBottom: `1px solid ${color.border}`,
         flexShrink: 0, background: color.bgPanel,
+        position: 'relative', zIndex: 2,
       }}>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          style={{ background: 'none', border: 'none', color: color.textMuted, cursor: 'pointer', display: 'flex', padding: 4, borderRadius: radius.sm }}
+          style={{
+            background: 'none', border: 'none', color: color.textMuted, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 44, height: 44, margin: -10,
+            borderRadius: radius.sm, flexShrink: 0,
+          }}
         >
-          <Menu size={16} />
+          <Menu size={20} />
         </button>
 
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -66,12 +80,12 @@ function EmptyState({ onNew, onToggle }: { onNew: () => void; onToggle: () => vo
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: color.bg }}>
       <div style={{
-        paddingTop: `max(${spacing[3]}, env(safe-area-inset-top))`,
+        paddingTop: `calc(${spacing[4]} + env(safe-area-inset-top, 0px))`,
         paddingBottom: spacing[3],
         paddingLeft: spacing[4],
         paddingRight: spacing[4],
         borderBottom: `1px solid ${color.border}`,
-        flexShrink: 0,
+        flexShrink: 0, background: color.bgPanel,
       }}>
         <button onClick={onToggle} style={{ background: 'none', border: 'none', color: color.textMuted, cursor: 'pointer', display: 'flex', padding: 4 }}>
           <Menu size={20} />
