@@ -6,11 +6,19 @@ import { SettingsModal } from '@/components/SettingsModal'
 import { color, motion } from '@/lib/tokens'
 
 export default function App() {
-  const { loadThreads, loadSettings, sidebarOpen, setSidebarOpen } = useChatStore()
+  const { loadThreads, loadSettings, sidebarOpen, setSidebarOpen, threads, activeThreadId, selectThread } = useChatStore()
 
   useEffect(() => {
     loadSettings().then(() => loadThreads())
   }, [loadSettings, loadThreads])
+
+  // Auto-select most recent thread on first load
+  const { threads, activeThreadId, selectThread } = useChatStore()
+  useEffect(() => {
+    if (!activeThreadId && threads.length > 0) {
+      selectThread(threads[0].id)
+    }
+  }, [threads, activeThreadId, selectThread])
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), [setSidebarOpen])
 

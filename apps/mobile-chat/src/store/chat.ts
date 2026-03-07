@@ -66,7 +66,7 @@ export const useChatStore = create<ChatState>()(
     activeThreadId: null,
     messages: {},
     settings: null,
-    sidebarOpen: true,
+    sidebarOpen: false,
     settingsOpen: false,
     isLoadingThreads: false,
     isLoadingMessages: false,
@@ -104,7 +104,7 @@ export const useChatStore = create<ChatState>()(
     },
 
     selectThread: async (id: string) => {
-      set({ activeThreadId: id })
+      set({ activeThreadId: id, sidebarOpen: false })
       const cached = get().messages[id]
       if (!cached) {
         await get().loadMessages(id)
