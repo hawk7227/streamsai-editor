@@ -81,7 +81,10 @@ export function ChatInput() {
   return (
     <div style={{
       borderTop: `1px solid ${color.border}`,
-      padding: `${spacing[3]} ${spacing[4]} ${spacing[4]}`,
+      paddingTop: spacing[3],
+      paddingLeft: spacing[4],
+      paddingRight: spacing[4],
+      paddingBottom: `max(${spacing[4]}, env(safe-area-inset-bottom))`,
       background: color.bgPanel,
       flexShrink: 0,
     }}>

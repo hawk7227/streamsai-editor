@@ -22,10 +22,13 @@ export function ChatPane() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: color.bg }}>
-      {/* Thread header */}
+      {/* Thread header — with iOS safe area top */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: spacing[3],
-        padding: `${spacing[3]} ${spacing[4]}`,
+        paddingTop: `max(${spacing[3]}, env(safe-area-inset-top))`,
+        paddingBottom: spacing[3],
+        paddingLeft: spacing[4],
+        paddingRight: spacing[4],
         borderBottom: `1px solid ${color.border}`,
         flexShrink: 0, background: color.bgPanel,
       }}>
@@ -63,12 +66,15 @@ function EmptyState({ onNew, onToggle }: { onNew: () => void; onToggle: () => vo
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: color.bg }}>
       <div style={{
-        padding: `${spacing[3]} ${spacing[4]}`,
+        paddingTop: `max(${spacing[3]}, env(safe-area-inset-top))`,
+        paddingBottom: spacing[3],
+        paddingLeft: spacing[4],
+        paddingRight: spacing[4],
         borderBottom: `1px solid ${color.border}`,
         flexShrink: 0,
       }}>
         <button onClick={onToggle} style={{ background: 'none', border: 'none', color: color.textMuted, cursor: 'pointer', display: 'flex', padding: 4 }}>
-          <Menu size={16} />
+          <Menu size={20} />
         </button>
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: spacing[8] }}>

@@ -2,19 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#0a0a0f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="StreamsAI" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <title>StreamsAI Chat</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; }
-      html, body, #root {
+      html, body {
         margin: 0; padding: 0;
         height: 100%; width: 100%;
         background: #0a0a0f;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         -webkit-font-smoothing: antialiased;
         overflow: hidden;
+        position: fixed;
       }
+      #root { height: 100%; width: 100%; }
     </style>
   </head>
   <body>
