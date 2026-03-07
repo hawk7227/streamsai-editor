@@ -2,8 +2,9 @@ import { useState, useRef, useCallback, KeyboardEvent } from 'react'
 import { useChatStore } from '@/store/chat'
 import { useSendMessage } from '@/hooks/useSendMessage'
 import { color, spacing, radius, font, motion } from '@/lib/tokens'
-import { Send, Square, Paperclip, ChevronDown, X } from 'lucide-react'
-import { MODELS, type ModelId, type Attachment } from '@/types'
+import { Paperclip, ArrowUp, Square, X } from 'lucide-react'
+import type { ModelId, Attachment } from '@/types'
+import { MODELS } from '@/types'
 import { nanoid } from '@/lib/nanoid'
 
 export function ChatInput() {
@@ -19,12 +20,13 @@ export function ChatInput() {
   const thread = threads.find(t => t.id === activeThreadId)
   const activeMessages = activeThreadId ? (messages[activeThreadId] ?? []) : []
   const isStreaming = activeMessages.some(m => m.status === 'streaming')
+  const canSend = (value.trim().length > 0 || attachments.length > 0) && !isStreaming
 
   const autoResize = useCallback(() => {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'
+    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
   }, [])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -35,15 +37,12 @@ export function ChatInput() {
   }
 
   const handleSend = useCallback(() => {
-    if (!value.trim() && attachments.length === 0) return
-    if (isStreaming) return
+    if (!canSend) return
     send(value, attachments)
     setValue('')
     setAttachments([])
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
-  }, [value, attachments, isStreaming, send])
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+  }, [canSend, value, attachments, send])
 
   const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -51,10 +50,7 @@ export function ChatInput() {
       files.map(f => new Promise<Attachment>((res, rej) => {
         const reader = new FileReader()
         reader.onload = ev => res({
-          id: nanoid(),
-          name: f.name,
-          type: f.type,
-          size: f.size,
+          id: nanoid(), name: f.name, type: f.type, size: f.size,
           dataUrl: ev.target?.result as string,
         })
         reader.onerror = rej
@@ -65,44 +61,35 @@ export function ChatInput() {
     e.target.value = ''
   }, [])
 
-  const removeAttachment = (id: string) => {
-    setAttachments(prev => prev.filter(a => a.id !== id))
-  }
-
-  const handleModelChange = async (model: ModelId) => {
-    setModelOpen(false)
-    if (activeThreadId) {
-      await updateThread(activeThreadId, { model })
-    }
-  }
-
   if (!activeThreadId) return null
 
   return (
     <div style={{
+      flexShrink: 0,
+      background: color.bgElevated,
       borderTop: `1px solid ${color.border}`,
       paddingTop: spacing[3],
-      paddingLeft: spacing[4],
-      paddingRight: spacing[4],
-      paddingBottom: `max(${spacing[4]}, env(safe-area-inset-bottom))`,
-      background: color.bgPanel,
-      flexShrink: 0,
+      paddingLeft: spacing[3],
+      paddingRight: spacing[3],
+      paddingBottom: `max(${spacing[4]}, env(safe-area-inset-bottom, 16px))`,
     }}>
-      {/* Attachments preview */}
+      {/* Attachments */}
       {attachments.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: spacing[2], marginBottom: spacing[3] }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: spacing[2], marginBottom: spacing[2] }}>
           {attachments.map(att => (
             <div key={att.id} style={{
-              display: 'flex', alignItems: 'center', gap: spacing[1],
-              padding: `${spacing[1]} ${spacing[2]} ${spacing[1]} ${spacing[3]}`,
-              background: color.bgCard, border: `1px solid ${color.border}`,
-              borderRadius: radius.full, fontSize: font.size.xs, color: color.textMuted,
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '4px 8px 4px 10px',
+              background: color.bgCard, borderRadius: radius.full,
+              fontSize: font.size.xs, color: color.textSub,
+              border: `1px solid ${color.border}`,
             }}>
-              {att.type.startsWith('image/') ? '🖼' : <Paperclip size={10} />}
-              <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.name}</span>
+              <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {att.name}
+              </span>
               <button
-                onClick={() => removeAttachment(att.id)}
-                style={{ background: 'none', border: 'none', color: color.textMuted, cursor: 'pointer', display: 'flex', padding: 2 }}
+                onClick={() => setAttachments(p => p.filter(a => a.id !== att.id))}
+                style={{ background: 'none', border: 'none', color: color.textSub, display: 'flex', padding: 2 }}
               >
                 <X size={10} />
               </button>
@@ -113,27 +100,28 @@ export function ChatInput() {
 
       {/* Input row */}
       <div style={{
-        display: 'flex', alignItems: 'flex-end', gap: spacing[3],
-        background: color.bgCard, border: `1px solid ${color.border}`,
-        borderRadius: radius.lg, padding: `${spacing[3]} ${spacing[3]}`,
-        transition: `border-color ${motion.fast} ${motion.easing}`,
+        display: 'flex', alignItems: 'flex-end', gap: spacing[2],
+        background: color.bgInput,
+        borderRadius: radius.xl,
+        border: `1px solid ${color.border}`,
+        padding: `${spacing[2]} ${spacing[2]} ${spacing[2]} ${spacing[3]}`,
+        minHeight: 48,
       }}>
-        {/* Attach */}
+        {/* Attach button */}
         <button
           onClick={() => fileRef.current?.click()}
-          title="Attach file"
-          style={iconBtnStyle}
+          style={{
+            width: 32, height: 32, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none',
+            color: color.textSub, borderRadius: radius.md,
+            marginBottom: 2,
+          }}
         >
-          <Paperclip size={15} />
+          <Paperclip size={18} strokeWidth={1.5} />
         </button>
-        <input
-          ref={fileRef}
-          type="file"
-          multiple
-          style={{ display: 'none' }}
-          onChange={handleFile}
-          accept="image/*,.pdf,.txt,.md,.json,.csv"
-        />
+        <input ref={fileRef} type="file" multiple style={{ display: 'none' }} onChange={handleFile}
+          accept="image/*,.pdf,.txt,.md,.json,.csv" />
 
         {/* Textarea */}
         <textarea
@@ -141,85 +129,98 @@ export function ChatInput() {
           value={value}
           onChange={e => { setValue(e.target.value); autoResize() }}
           onKeyDown={handleKeyDown}
-          placeholder="Message…"
+          placeholder="Message"
           rows={1}
+          disabled={isStreaming}
           style={{
             flex: 1, resize: 'none', border: 'none', outline: 'none',
             background: 'transparent', color: color.text,
-            fontSize: font.size.base, lineHeight: '1.5',
+            fontSize: font.size.base, lineHeight: String(1.5),
             fontFamily: font.sans, padding: 0,
-            scrollbarWidth: 'none',
+            alignSelf: 'center',
+            caretColor: color.accent,
           }}
-          disabled={isStreaming}
         />
 
-        {/* Send / Cancel */}
+        {/* Send / Stop */}
         {isStreaming ? (
-          <button onClick={cancel} style={{ ...sendBtnStyle, background: color.error + '22' }}>
-            <Square size={14} color={color.error} />
+          <button
+            onClick={cancel}
+            style={{
+              width: 34, height: 34, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: color.error, border: 'none', borderRadius: radius.md,
+              transition: `transform ${motion.snap} ${motion.easing}`,
+            }}
+            onTouchStart={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.92)' }}
+            onTouchEnd={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)' }}
+          >
+            <Square size={14} color="#fff" fill="#fff" />
           </button>
         ) : (
           <button
             onClick={handleSend}
-            disabled={!value.trim() && attachments.length === 0}
+            disabled={!canSend}
             style={{
-              ...sendBtnStyle,
-              background: value.trim() || attachments.length ? color.accent : color.bgHover,
-              opacity: value.trim() || attachments.length ? 1 : 0.5,
-              transition: `background ${motion.fast} ${motion.easing}, opacity ${motion.fast} ${motion.easing}`,
+              width: 34, height: 34, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: canSend ? color.accent : color.bgCard,
+              border: 'none', borderRadius: radius.md,
+              transition: `background ${motion.fast} ${motion.easing}, transform ${motion.snap} ${motion.easing}`,
             }}
+            onTouchStart={e => { if (canSend) (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.92)' }}
+            onTouchEnd={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)' }}
           >
-            <Send size={14} color="#fff" />
+            <ArrowUp size={18} color={canSend ? '#fff' : color.textFaint} strokeWidth={2.5} />
           </button>
         )}
       </div>
 
-      {/* Model selector */}
-      <div style={{ marginTop: spacing[2], display: 'flex', alignItems: 'center', gap: spacing[2], position: 'relative' }}>
+      {/* Model pill */}
+      <div style={{ marginTop: spacing[2], position: 'relative', display: 'flex' }}>
         <button
           onClick={() => setModelOpen(o => !o)}
           style={{
-            display: 'flex', alignItems: 'center', gap: spacing[1],
+            display: 'flex', alignItems: 'center', gap: 4,
             background: 'none', border: 'none',
-            color: color.textMuted, fontSize: font.size.xs, cursor: 'pointer',
-            padding: `${spacing[1]} ${spacing[2]}`,
-            borderRadius: radius.sm,
-            transition: `color ${motion.fast} ${motion.easing}`,
+            color: color.textSub, fontSize: font.size.xs,
+            padding: '2px 6px', borderRadius: radius.full,
           }}
         >
-          {thread ? MODELS[thread.model]?.label ?? thread.model : 'Select model'}
-          <ChevronDown size={10} />
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: color.accent, display: 'inline-block' }} />
+          {thread ? (MODELS[thread.model]?.label ?? thread.model) : 'Model'}
+          <span style={{ fontSize: 9, color: color.textFaint }}>▾</span>
         </button>
-        <span style={{ fontSize: font.size.xs, color: color.textFaint }}>
-          ↵ send · ⇧↵ newline
-        </span>
 
-        {/* Model dropdown */}
+        {/* Model picker */}
         {modelOpen && (
           <div style={{
-            position: 'absolute', bottom: '100%', left: 0, marginBottom: spacing[1],
+            position: 'absolute', bottom: '100%', left: 0, marginBottom: spacing[2],
             background: color.bgCard, border: `1px solid ${color.border}`,
             borderRadius: radius.md, overflow: 'hidden', zIndex: 100,
-            boxShadow: '0 10px 30px rgba(0,0,0,.4)',
-            minWidth: 180,
+            boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+            minWidth: 200,
+            animation: `slideUp 150ms ${motion.easing}`,
           }}>
-            {(Object.values(MODELS)).map(m => (
+            {Object.values(MODELS).map(m => (
               <button
                 key={m.id}
-                onClick={() => handleModelChange(m.id)}
+                onClick={async () => {
+                  setModelOpen(false)
+                  if (activeThreadId) await updateThread(activeThreadId, { model: m.id as ModelId })
+                }}
                 style={{
-                  display: 'block', width: '100%', textAlign: 'left',
-                  padding: `${spacing[3]} ${spacing[4]}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  width: '100%', padding: `${spacing[3]} ${spacing[4]}`,
                   background: thread?.model === m.id ? color.accentDim : 'none',
                   border: 'none', cursor: 'pointer',
                   color: thread?.model === m.id ? color.accent : color.text,
-                  fontSize: font.size.sm,
+                  fontSize: font.size.sm, textAlign: 'left',
+                  borderBottom: `1px solid ${color.border}`,
                 }}
               >
-                {m.label}
-                <span style={{ fontSize: font.size.xs, color: color.textMuted, marginLeft: spacing[2] }}>
-                  {m.provider}
-                </span>
+                <span>{m.label}</span>
+                <span style={{ fontSize: font.size.xs, color: color.textSub }}>{m.provider}</span>
               </button>
             ))}
           </div>
@@ -228,21 +229,3 @@ export function ChatInput() {
     </div>
   )
 }
-
-const iconBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none',
-  color: 'rgba(255,255,255,0.3)', cursor: 'pointer',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  padding: spacing[1], borderRadius: radius.sm, flexShrink: 0,
-}
-
-const sendBtnStyle: React.CSSProperties = {
-  width: 32, height: 32, flexShrink: 0,
-  border: 'none', borderRadius: radius.sm,
-  cursor: 'pointer',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-}
-
-// fix token import
-const color_bgHover = '#1c1c27'
-void color_bgHover

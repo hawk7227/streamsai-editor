@@ -1,129 +1,173 @@
 import { useState, useEffect } from 'react'
 import { useChatStore } from '@/store/chat'
-import { color, spacing, radius, font, motion, shadow } from '@/lib/tokens'
-import { X, Eye, EyeOff, Save } from 'lucide-react'
+import { color, spacing, radius, font, motion } from '@/lib/tokens'
+import { X, Eye, EyeOff, Check, Settings } from 'lucide-react'
 import { MODELS, type AppSettings } from '@/types'
 
 export function SettingsModal() {
   const { settings, saveSettings, settingsOpen, setSettingsOpen } = useChatStore()
 
   const [form, setForm] = useState<AppSettings>({
-    anthropicKey: '',
-    openaiKey: '',
+    anthropicKey: '', openaiKey: '',
     defaultModel: 'claude-sonnet-4-5',
-    streamingEnabled: true,
-    theme: 'dark',
+    streamingEnabled: true, theme: 'dark',
   })
-  const [showAnthropicKey, setShowAnthropicKey] = useState(false)
-  const [showOpenAIKey, setShowOpenAIKey] = useState(false)
+  const [showAnth, setShowAnth] = useState(false)
+  const [showOAI, setShowOAI] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    if (settings) setForm(settings)
-  }, [settings])
+  useEffect(() => { if (settings) setForm(settings) }, [settings])
 
   if (!settingsOpen) return null
 
   const handleSave = async () => {
     await saveSettings(form)
     setSaved(true)
-    setTimeout(() => { setSaved(false); setSettingsOpen(false) }, 800)
+    setTimeout(() => { setSaved(false); setSettingsOpen(false) }, 900)
   }
 
   return (
     <div
       onClick={() => setSettingsOpen(false)}
       style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: spacing[4],
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: 'rgba(0,0,0,0.75)',
+        display: 'flex', alignItems: 'flex-end',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background: color.bgCard, border: `1px solid ${color.border}`,
-          borderRadius: radius['2xl'], padding: spacing[6],
-          width: '100%', maxWidth: 480,
-          boxShadow: shadow.lg,
-          animation: `fadeSlideIn ${motion.normal} ${motion.easing}`,
+          width: '100%',
+          background: color.bgElevated,
+          borderRadius: `${radius.xl} ${radius.xl} 0 0`,
+          padding: spacing[6],
+          paddingBottom: `max(${spacing[8]}, env(safe-area-inset-bottom, 32px))`,
+          animation: `slideUp ${motion.normal} ${motion.easing}`,
+          maxHeight: '90vh',
+          overflowY: 'auto',
         }}
       >
+        {/* Handle */}
+        <div style={{
+          width: 36, height: 4, borderRadius: 2,
+          background: color.borderStrong,
+          margin: `0 auto ${spacing[5]}`,
+        }} />
+
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing[6] }}>
-          <h2 style={{ margin: 0, fontSize: font.size.lg, fontWeight: font.weight.semibold, color: color.text }}>
-            Settings
-          </h2>
-          <button onClick={() => setSettingsOpen(false)} style={{ background: 'none', border: 'none', color: color.textMuted, cursor: 'pointer', display: 'flex' }}>
-            <X size={18} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: spacing[3] }}>
+            <Settings size={18} color={color.accent} />
+            <span style={{ fontSize: font.size.lg, fontWeight: font.weight.bold, color: color.text }}>Settings</span>
+          </div>
+          <button
+            onClick={() => setSettingsOpen(false)}
+            style={{
+              width: 32, height: 32,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: color.bgCard, border: 'none', borderRadius: radius.full, color: color.textSub,
+            }}
+          >
+            <X size={16} />
           </button>
         </div>
 
-        {/* API Keys */}
+        {/* API Keys section */}
         <Section label="API Keys">
           <KeyField
             label="Anthropic API Key"
             value={form.anthropicKey}
-            show={showAnthropicKey}
-            onToggle={() => setShowAnthropicKey(v => !v)}
+            show={showAnth}
+            onToggle={() => setShowAnth(v => !v)}
             onChange={v => setForm(f => ({ ...f, anthropicKey: v }))}
             placeholder="sk-ant-..."
           />
           <KeyField
             label="OpenAI API Key"
             value={form.openaiKey}
-            show={showOpenAIKey}
-            onToggle={() => setShowOpenAIKey(v => !v)}
+            show={showOAI}
+            onToggle={() => setShowOAI(v => !v)}
             onChange={v => setForm(f => ({ ...f, openaiKey: v }))}
             placeholder="sk-..."
           />
-          <p style={{ fontSize: font.size.xs, color: color.textFaint, margin: `${spacing[2]} 0 0` }}>
-            Keys stored locally in IndexedDB — never sent to any server except the AI providers directly.
+          <p style={{ fontSize: font.size.xs, color: color.textFaint, marginTop: spacing[2], lineHeight: String(1.5) }}>
+            Keys stored locally on your device. Never sent to any server except AI providers directly.
           </p>
         </Section>
 
         {/* Default model */}
         <Section label="Default Model">
-          <select
-            value={form.defaultModel}
-            onChange={e => setForm(f => ({ ...f, defaultModel: e.target.value as AppSettings['defaultModel'] }))}
-            style={inputStyle}
-          >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: spacing[2] }}>
             {Object.values(MODELS).map(m => (
-              <option key={m.id} value={m.id}>{m.label} ({m.provider})</option>
+              <button
+                key={m.id}
+                onClick={() => setForm(f => ({ ...f, defaultModel: m.id }))}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: `${spacing[3]} ${spacing[4]}`,
+                  background: form.defaultModel === m.id ? color.accentDim : color.bgCard,
+                  border: `1px solid ${form.defaultModel === m.id ? color.accent + '50' : color.border}`,
+                  borderRadius: radius.md, cursor: 'pointer',
+                  color: form.defaultModel === m.id ? color.accent : color.text,
+                  fontSize: font.size.sm,
+                }}
+              >
+                <span>{m.label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: spacing[2] }}>
+                  <span style={{ fontSize: font.size.xs, color: color.textSub }}>{m.provider}</span>
+                  {form.defaultModel === m.id && <Check size={14} color={color.accent} />}
+                </div>
+              </button>
             ))}
-          </select>
+          </div>
         </Section>
 
-        {/* Streaming toggle */}
+        {/* Streaming */}
         <Section label="Streaming">
-          <label style={{ display: 'flex', alignItems: 'center', gap: spacing[3], cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={form.streamingEnabled}
-              onChange={e => setForm(f => ({ ...f, streamingEnabled: e.target.checked }))}
-              style={{ width: 16, height: 16, accentColor: color.accent }}
-            />
-            <span style={{ fontSize: font.size.sm, color: color.text }}>Enable streaming responses</span>
-          </label>
+          <button
+            onClick={() => setForm(f => ({ ...f, streamingEnabled: !f.streamingEnabled }))}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              width: '100%', padding: `${spacing[3]} ${spacing[4]}`,
+              background: color.bgCard, border: `1px solid ${color.border}`,
+              borderRadius: radius.md, cursor: 'pointer',
+              color: color.text, fontSize: font.size.sm,
+            }}
+          >
+            <span>Streaming responses</span>
+            <div style={{
+              width: 44, height: 26, borderRadius: 13,
+              background: form.streamingEnabled ? color.accent : color.bgHover,
+              position: 'relative',
+              transition: `background ${motion.fast} ${motion.easing}`,
+            }}>
+              <div style={{
+                position: 'absolute', top: 3, left: form.streamingEnabled ? 21 : 3,
+                width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                transition: `left ${motion.fast} ${motion.easing}`,
+              }} />
+            </div>
+          </button>
         </Section>
 
         {/* Save */}
         <button
           onClick={handleSave}
           style={{
-            width: '100%', marginTop: spacing[4],
-            padding: `${spacing[3]} ${spacing[4]}`,
+            width: '100%', marginTop: spacing[2],
+            padding: spacing[4],
             background: saved ? color.success : color.accent,
-            border: 'none', borderRadius: radius.md,
-            color: '#fff', fontSize: font.size.base, fontWeight: font.weight.semibold,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing[2],
+            border: 'none', borderRadius: radius.lg,
+            color: '#fff', fontSize: font.size.md, fontWeight: font.weight.semibold,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: spacing[2],
             transition: `background ${motion.fast} ${motion.easing}`,
           }}
+          onTouchStart={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.98)' }}
+          onTouchEnd={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)' }}
         >
-          <Save size={15} />
-          {saved ? 'Saved!' : 'Save settings'}
+          {saved ? <><Check size={17} /> Saved!</> : 'Save Settings'}
         </button>
       </div>
     </div>
@@ -132,8 +176,12 @@ export function SettingsModal() {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: spacing[5] }}>
-      <div style={{ fontSize: font.size.xs, fontWeight: font.weight.semibold, color: color.textFaint, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: spacing[3] }}>
+    <div style={{ marginBottom: spacing[6] }}>
+      <div style={{
+        fontSize: font.size.xs, fontWeight: font.weight.semibold,
+        color: color.textSub, textTransform: 'uppercase', letterSpacing: '0.08em',
+        marginBottom: spacing[3],
+      }}>
         {label}
       </div>
       {children}
@@ -146,32 +194,39 @@ function KeyField({ label, value, show, onToggle, onChange, placeholder }: {
   onToggle: () => void; onChange: (v: string) => void; placeholder: string
 }) {
   return (
-    <label style={{ display: 'block', marginBottom: spacing[3] }}>
-      <span style={{ fontSize: font.size.sm, color: color.textMuted, display: 'block', marginBottom: spacing[1] }}>{label}</span>
+    <div style={{ marginBottom: spacing[3] }}>
+      <div style={{ fontSize: font.size.sm, color: color.textSub, marginBottom: spacing[2] }}>{label}</div>
       <div style={{ position: 'relative' }}>
         <input
           type={show ? 'text' : 'password'}
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          style={{ ...inputStyle, paddingRight: 40 }}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          style={{
+            width: '100%',
+            padding: `${spacing[3]} 44px ${spacing[3]} ${spacing[4]}`,
+            background: color.bgCard,
+            border: `1px solid ${color.border}`,
+            borderRadius: radius.md, color: color.text,
+            fontSize: font.size.sm, boxSizing: 'border-box',
+            fontFamily: 'monospace',
+          }}
         />
         <button
           type="button"
           onClick={onToggle}
-          style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: color.textMuted, cursor: 'pointer', display: 'flex' }}
+          style={{
+            position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', color: color.textSub, display: 'flex', padding: 4,
+          }}
         >
-          {show ? <EyeOff size={14} /> : <Eye size={14} />}
+          {show ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       </div>
-    </label>
+    </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: `${spacing[3]} ${spacing[3]}`,
-  background: color.bgPanel, border: `1px solid ${color.border}`,
-  borderRadius: radius.sm, color: color.text,
-  fontSize: font.size.sm, outline: 'none', boxSizing: 'border-box',
-  fontFamily: font.sans,
 }

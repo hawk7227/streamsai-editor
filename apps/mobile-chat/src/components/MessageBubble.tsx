@@ -1,20 +1,23 @@
-import { memo } from 'react'
+import { memo, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import DOMPurify from 'dompurify'
 import { color, spacing, radius, font, motion } from '@/lib/tokens'
 import type { Message } from '@/types'
-import { AlertCircle, Copy, Check, Paperclip } from 'lucide-react'
-import { useState, useCallback } from 'react'
+import { Copy, Check, AlertCircle } from 'lucide-react'
 import dayjs from 'dayjs'
+import relativeTime from 'dayjs/plugin/relativeTime'
+
+dayjs.extend(relativeTime)
 
 interface Props {
   message: Message
   isLast: boolean
+  showTime: boolean
 }
 
-export const MessageBubble = memo(function MessageBubble({ message, isLast }: Props) {
+export const MessageBubble = memo(function MessageBubble({ message, isLast, showTime }: Props) {
   const isUser = message.role === 'user'
   const isStreaming = message.status === 'streaming'
   const isError = message.status === 'error'
@@ -24,130 +27,119 @@ export const MessageBubble = memo(function MessageBubble({ message, isLast }: Pr
       display: 'flex',
       flexDirection: 'column',
       alignItems: isUser ? 'flex-end' : 'flex-start',
-      marginBottom: spacing[4],
-      animation: `fadeSlideIn ${motion.normal} ${motion.easing}`,
+      marginBottom: showTime ? spacing[1] : '2px',
+      paddingInline: spacing[4],
+      animation: `msgIn 200ms ${motion.easing} both`,
     }}>
-      {/* Attachments */}
-      {message.attachments.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: spacing[2], marginBottom: spacing[2], maxWidth: '85%' }}>
-          {message.attachments.map(att => (
-            <AttachmentChip key={att.id} name={att.name} type={att.type} />
-          ))}
-        </div>
-      )}
-
       {/* Bubble */}
       <div style={{
-        maxWidth: '85%',
-        padding: `${spacing[3]} ${spacing[4]}`,
-        borderRadius: isUser ? `${radius.lg} ${radius.lg} ${radius.sm} ${radius.lg}` : `${radius.lg} ${radius.lg} ${radius.lg} ${radius.sm}`,
+        maxWidth: '78%',
+        padding: isUser ? `${spacing[3]} ${spacing[4]}` : `${spacing[3]} ${spacing[4]}`,
+        borderRadius: isUser
+          ? `${radius.lg} ${radius.sm} ${radius.lg} ${radius.lg}`
+          : `${radius.sm} ${radius.lg} ${radius.lg} ${radius.lg}`,
         background: isError
           ? color.errorDim
           : isUser
-          ? color.userBubble
-          : color.assistantBubble,
+          ? `linear-gradient(160deg, ${color.userBgLight}, ${color.userBg})`
+          : color.aiBg,
         border: isUser
-          ? `1px solid ${color.userBubbleBorder}`
-          : isError
-          ? `1px solid ${color.error}30`
-          : `1px solid ${color.border}`,
-        color: color.text,
+          ? 'none'
+          : `1px solid ${isError ? color.error + '40' : color.aiBorder}`,
+        color: isUser ? color.userText : color.aiText,
         fontSize: font.size.base,
-        lineHeight: '1.6',
-        position: 'relative',
+        lineHeight: String(1.55),
         wordBreak: 'break-word',
+        boxShadow: isUser
+          ? `0 2px 12px rgba(26,122,74,0.35)`
+          : '0 1px 4px rgba(0,0,0,0.3)',
+        position: 'relative',
       }}>
         {isError && (
           <div style={{ display: 'flex', alignItems: 'center', gap: spacing[2], color: color.error, marginBottom: spacing[2], fontSize: font.size.sm }}>
-            <AlertCircle size={14} />
-            <span>Error</span>
+            <AlertCircle size={13} /> Error
           </div>
         )}
 
-        {isUser ? (
-          <UserContent content={message.content} />
-        ) : (
-          <AssistantContent content={message.content} isStreaming={isStreaming} isLast={isLast} />
-        )}
+        {isUser
+          ? <span style={{ whiteSpace: 'pre-wrap' }}>{DOMPurify.sanitize(message.content, { ALLOWED_TAGS: [] })}</span>
+          : <AssistantContent content={message.content} isStreaming={isStreaming} isLast={isLast} />
+        }
       </div>
 
-      {/* Timestamp + tokens */}
-      <div style={{ fontSize: font.size.xs, color: color.textFaint, marginTop: spacing[1], paddingInline: spacing[1] }}>
-        {dayjs(message.createdAt).format('HH:mm')}
-        {message.tokens && <span style={{ marginLeft: spacing[2] }}>{message.tokens} tokens</span>}
-      </div>
+      {/* Time + tokens */}
+      {showTime && (
+        <div style={{
+          fontSize: font.size.xs, color: color.textFaint,
+          marginTop: '3px',
+          paddingInline: '2px',
+          display: 'flex', gap: spacing[2], alignItems: 'center',
+        }}>
+          {dayjs(message.createdAt).format('h:mm A')}
+          {message.tokens && (
+            <span style={{ color: color.textFaint }}>{message.tokens} tok</span>
+          )}
+        </div>
+      )}
     </div>
   )
 })
 
-// ─── User content — plain text, no markdown (sanitized) ──────────────────────
+// ─── Assistant content ────────────────────────────────────────────────────────
 
-function UserContent({ content }: { content: string }) {
-  const safe = DOMPurify.sanitize(content, { ALLOWED_TAGS: [] })
-  return <span style={{ whiteSpace: 'pre-wrap' }}>{safe}</span>
-}
+function AssistantContent({ content, isStreaming, isLast }: {
+  content: string; isStreaming: boolean; isLast: boolean
+}) {
+  if (!content && isStreaming) return <TypingIndicator />
 
-// ─── Assistant content — full markdown with code blocks ──────────────────────
-
-function AssistantContent({ content, isStreaming, isLast }: { content: string; isStreaming: boolean; isLast: boolean }) {
   return (
-    <div style={{ '--code-bg': '#1a1b26' } as React.CSSProperties}>
+    <div>
       <ReactMarkdown
         components={{
-          code({ className, children, ...props }) {
+          code({ className, children }) {
             const match = /language-(\w+)/.exec(className ?? '')
             const code = String(children).replace(/\n$/, '')
-            if (match) {
-              return (
-                <CodeBlock language={match[1]} code={code} />
-              )
-            }
-            return (
-              <code
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontSize: '0.88em',
-                  fontFamily: font.mono,
-                }}
-                {...props}
-              >
-                {children}
-              </code>
-            )
+            return match
+              ? <CodeBlock language={match[1]} code={code} />
+              : <InlineCode>{code}</InlineCode>
           },
           p({ children }) {
-            return <p style={{ margin: `0 0 ${spacing[3]}`, lineHeight: '1.65' }}>{children}</p>
+            return <p style={{ margin: 0, marginBottom: spacing[2], lineHeight: String(1.6) }}>{children}</p>
           },
           ul({ children }) {
-            return <ul style={{ margin: `0 0 ${spacing[3]}`, paddingLeft: spacing[5], lineHeight: '1.65' }}>{children}</ul>
+            return <ul style={{ margin: `0 0 ${spacing[2]}`, paddingLeft: spacing[5], lineHeight: String(1.6) }}>{children}</ul>
           },
           ol({ children }) {
-            return <ol style={{ margin: `0 0 ${spacing[3]}`, paddingLeft: spacing[5], lineHeight: '1.65' }}>{children}</ol>
+            return <ol style={{ margin: `0 0 ${spacing[2]}`, paddingLeft: spacing[5], lineHeight: String(1.6) }}>{children}</ol>
+          },
+          li({ children }) {
+            return <li style={{ marginBottom: '2px' }}>{children}</li>
           },
           blockquote({ children }) {
             return (
               <blockquote style={{
-                margin: `0 0 ${spacing[3]}`, paddingLeft: spacing[4],
+                margin: `0 0 ${spacing[2]}`,
+                paddingLeft: spacing[3],
                 borderLeft: `3px solid ${color.accent}`,
-                color: color.textMuted,
+                color: color.textSub,
               }}>{children}</blockquote>
             )
           },
-          h1({ children }) { return <h1 style={{ fontSize: font.size.lg, fontWeight: font.weight.bold, margin: `0 0 ${spacing[3]}` }}>{children}</h1> },
-          h2({ children }) { return <h2 style={{ fontSize: font.size.md, fontWeight: font.weight.semibold, margin: `0 0 ${spacing[2]}` }}>{children}</h2> },
+          h1({ children }) { return <h1 style={{ fontSize: font.size.lg, fontWeight: font.weight.bold, margin: `0 0 ${spacing[3]}`, color: color.text }}>{children}</h1> },
+          h2({ children }) { return <h2 style={{ fontSize: font.size.md, fontWeight: font.weight.semibold, margin: `0 0 ${spacing[2]}`, color: color.text }}>{children}</h2> },
           h3({ children }) { return <h3 style={{ fontSize: font.size.base, fontWeight: font.weight.semibold, margin: `0 0 ${spacing[2]}` }}>{children}</h3> },
+          strong({ children }) { return <strong style={{ fontWeight: font.weight.semibold, color: color.text }}>{children}</strong> },
+          a({ href, children }) { return <a href={href} style={{ color: color.accent, textDecoration: 'underline' }}>{children}</a> },
         }}
       >
         {content}
       </ReactMarkdown>
-      {isStreaming && isLast && <StreamCursor />}
+      {isStreaming && isLast && content && <StreamCursor />}
     </div>
   )
 }
 
-// ─── Code block with copy button ─────────────────────────────────────────────
+// ─── Code block ───────────────────────────────────────────────────────────────
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = useState(false)
@@ -160,17 +152,20 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 
   return (
     <div style={{
-      position: 'relative', margin: `${spacing[2]} 0`,
-      borderRadius: radius.md, overflow: 'hidden',
-      border: `1px solid ${color.border}`,
+      margin: `${spacing[3]} 0`,
+      borderRadius: radius.md,
+      overflow: 'hidden',
+      border: `1px solid rgba(255,255,255,0.08)`,
+      background: color.codeBg,
     }}>
-      {/* Top bar */}
+      {/* Bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: `${spacing[2]} ${spacing[3]}`,
-        background: '#12121a', borderBottom: `1px solid ${color.border}`,
+        background: color.codeBar,
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
       }}>
-        <span style={{ fontSize: font.size.xs, color: color.textFaint, fontFamily: font.mono, textTransform: 'lowercase' }}>
+        <span style={{ fontSize: font.size.xs, color: color.textSub, fontFamily: font.mono }}>
           {language}
         </span>
         <button
@@ -178,29 +173,49 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
           style={{
             display: 'flex', alignItems: 'center', gap: 4,
             background: 'none', border: 'none',
-            color: copied ? color.success : color.textMuted,
+            color: copied ? color.success : color.textSub,
             fontSize: font.size.xs, cursor: 'pointer',
-            transition: `color ${motion.fast} ${motion.easing}`,
+            padding: '4px 8px', borderRadius: radius.xs,
+            transition: `color ${motion.snap} ${motion.easing}`,
           }}
         >
-          {copied ? <Check size={11} /> : <Copy size={11} />}
+          {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <SyntaxHighlighter
-        style={oneDark}
-        language={language}
-        PreTag="div"
-        customStyle={{
-          margin: 0, borderRadius: 0,
-          fontSize: '13px', lineHeight: '1.6',
-          padding: spacing[4],
-          maxHeight: '400px', overflowY: 'auto',
-        }}
-      >
-        {code}
-      </SyntaxHighlighter>
+
+      {/* Code */}
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const }}>
+        <SyntaxHighlighter
+          style={oneDark}
+          language={language}
+          PreTag="div"
+          customStyle={{
+            margin: 0, borderRadius: 0,
+            fontSize: '13px', lineHeight: '1.55',
+            padding: spacing[4],
+            background: color.codeBg,
+            minWidth: '100%',
+          }}
+          codeTagProps={{ style: { fontFamily: font.mono } }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
     </div>
+  )
+}
+
+function InlineCode({ children }: { children: React.ReactNode }) {
+  return (
+    <code style={{
+      fontFamily: font.mono,
+      fontSize: '0.87em',
+      background: 'rgba(255,255,255,0.1)',
+      padding: '2px 5px',
+      borderRadius: '4px',
+      color: '#e2e8f0',
+    }}>{children}</code>
   )
 }
 
@@ -210,28 +225,30 @@ function StreamCursor() {
   return (
     <span style={{
       display: 'inline-block',
-      width: '2px', height: '1em',
+      width: 2, height: '1em',
       background: color.accent,
-      marginLeft: '2px',
+      marginLeft: 2,
       verticalAlign: 'text-bottom',
+      borderRadius: 1,
       animation: 'blink 1s step-end infinite',
     }} />
   )
 }
 
-// ─── Attachment chip ──────────────────────────────────────────────────────────
+// ─── Typing indicator (dots) ──────────────────────────────────────────────────
 
-function AttachmentChip({ name, type }: { name: string; type: string }) {
-  const isImage = type.startsWith('image/')
+function TypingIndicator() {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: spacing[2],
-      padding: `${spacing[1]} ${spacing[3]}`,
-      background: color.bgCard, border: `1px solid ${color.border}`,
-      borderRadius: radius.full, fontSize: font.size.xs, color: color.textMuted,
-    }}>
-      {isImage ? '🖼' : <Paperclip size={10} />}
-      <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+    <div style={{ display: 'flex', gap: 5, alignItems: 'center', padding: '4px 2px' }}>
+      {[0, 1, 2].map(i => (
+        <span key={i} style={{
+          width: 7, height: 7,
+          background: color.textSub,
+          borderRadius: '50%',
+          display: 'inline-block',
+          animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
+        }} />
+      ))}
     </div>
   )
 }
