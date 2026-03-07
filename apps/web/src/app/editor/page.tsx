@@ -666,7 +666,12 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
         <Tb onClick={() => setPanel(panel === "code" ? null : "code")}>&lt;/&gt;</Tb>
         <Tb onClick={() => setPanel(panel === "github" ? null : "github")}>⬆️</Tb>
         <button onClick={() => {
-          setInspectMode(!inspectMode);
+          const next = !inspectMode;
+          setInspectMode(next);
+          // If enabling inspect mode while a live URL is loaded, open GitHub panel
+          if (next && liveUrl) {
+            setPanel("github");
+          }
         }} style={{ height: 28, padding: "0 10px", borderRadius: 5, background: inspectMode ? "#f97316" : "#1a1b1e", border: inspectMode ? "1px solid #f97316" : "1px solid #1f2937", color: inspectMode ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
           {inspectMode ? "👆 INSPECT" : "🖱️ BROWSE"}
         </button>
@@ -699,6 +704,7 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
       <div style={{ flexShrink: 0, height: 24, background: "#08090a", borderBottom: "1px solid #111318", display: "flex", alignItems: "center", padding: "0 12px", gap: 10, fontSize: 9, color: "#4b5563" }}>
         <span style={{ fontWeight: 700, color: inspectMode ? "#f97316" : "#2dd4a0" }}>{inspectMode ? "INSPECT" : "BROWSE"}</span>
         {liveUrl && <span style={{ color: "#2dd4a0", fontWeight: 600 }}>LIVE</span>}
+        {inspectMode && liveUrl && <span style={{ color: "#f97316", fontWeight: 700, fontSize: 8 }}>⚠ CROSS-ORIGIN — Pull file to edit</span>}
         <span style={{ fontWeight: 600, color: "#9ca3af" }}>{dev.n}</span>
         <span>{dev.w}x{dev.h}</span>
         <span>Vis:{visH}px</span>
@@ -762,12 +768,12 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
               <div style={{ width: dev.w, height: visH, position: "relative" }}>
                 <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block", pointerEvents: inspectMode ? "none" : "auto" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
                 {/* Inspect overlay — blocks iframe clicks, captures position */}
-                {inspectMode && <div style={{ position: "absolute", inset: 0, cursor: "crosshair", zIndex: 5 }}
+                {inspectMode && <div style={{ position: "absolute", inset: 0, cursor: liveUrl ? "default" : "crosshair", zIndex: 5 }}
                   onClick={(e) => {
+                    if (liveUrl) return; // cross-origin, handled by banner below
                     const rect = e.currentTarget.getBoundingClientRect();
                     const x = e.clientX - rect.left;
                     const y = e.clientY - rect.top;
-                    const scale = zoom > 0 ? zoom : autoScale;
                     // Try to get element at click point from iframe
                     try {
                       const doc = iframeRef.current?.contentDocument;
@@ -792,10 +798,9 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                               justifyContent: cs.justifyContent, alignItems: cs.alignItems, gap: cs.gap,
                               overflow: cs.overflow, opacity: cs.opacity, background: cs.background,
                             },
-                            _el: el, // Keep reference for applying styles
+                            _el: el,
                           });
                           setPanel("props");
-                          // Extract colors
                           const colors = new Set(swatches);
                           [cs.color, cs.backgroundColor].forEach(c => {
                             if (c && c !== "transparent" && !c.includes("0, 0, 0, 0")) colors.add(rgb2hex(c));
@@ -804,12 +809,47 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                         }
                       }
                     } catch {
-                      // Cross-origin — show message
-                      setSel({ type: "sel", tag: "?", txt: "Cross-origin: pull file from GitHub to inspect", rect: { x: Math.round(x), y: Math.round(y), w: 0, h: 0 }, sty: {} });
-                      setPanel("props");
+                      // Should not hit this since liveUrl guard above handles it
                     }
                   }}
-                />}
+                >
+                  {/* Cross-origin banner — shown when live URL is loaded */}
+                  {liveUrl && (
+                    <div style={{
+                      position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+                      alignItems: "center", justifyContent: "center", gap: 12,
+                      background: "rgba(0,0,0,0.85)", backdropFilter: "blur(4px)",
+                    }}>
+                      <div style={{ fontSize: 28 }}>✏️</div>
+                      <div style={{ textAlign: "center", padding: "0 20px" }}>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 6 }}>Pull file to edit</p>
+                        <p style={{ fontSize: 10, color: "#6b7280", lineHeight: 1.6 }}>
+                          Live URLs are cross-origin and can&apos;t be inspected directly.<br />
+                          Pull the file from GitHub to enable click-to-edit.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setPanel("github")}
+                        style={{
+                          padding: "8px 16px", borderRadius: 6, background: "#f97316",
+                          color: "#000", fontWeight: 700, fontSize: 11, border: "none", cursor: "pointer",
+                        }}
+                      >
+                        Open GitHub Panel →
+                      </button>
+                      <button
+                        onClick={() => { setLiveUrl(""); setInspectMode(true); }}
+                        style={{
+                          padding: "6px 12px", borderRadius: 6, background: "transparent",
+                          color: "#6b7280", fontWeight: 600, fontSize: 10,
+                          border: "1px solid #374151", cursor: "pointer",
+                        }}
+                      >
+                        Use HTML preview instead
+                      </button>
+                    </div>
+                  )}
+                </div>}
 
                 {/* SAFE ZONES */}
                 {zones && <>
