@@ -15,7 +15,6 @@ export function ThreadList() {
     selectThread,
     deleteThread,
     pinThread,
-    setSidebarOpen,
     setSettingsOpen,
   } = useChatStore()
 

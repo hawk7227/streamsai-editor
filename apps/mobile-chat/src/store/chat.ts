@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import type { Thread, Message, AppSettings, ModelId } from '@/types'
+import type { Thread, Message, AppSettings } from '@/types'
 import {
   dbGetThreads,
   dbGetThread,

@@ -1,7 +1,7 @@
 import { useRef, useCallback } from 'react'
 import { useChatStore } from '@/store/chat'
 import { streamCompletion } from '@/lib/streaming'
-import type { Attachment } from '@/types'
+import type { Attachment, Message } from '@/types'
 
 export function useSendMessage() {
   const store = useChatStore()
@@ -86,7 +86,7 @@ export function useSendMessage() {
     const { activeThreadId, messages, updateMessage } = useChatStore.getState()
     if (!activeThreadId) return
     const msgs = messages[activeThreadId] ?? []
-    const streaming = msgs.findLast(m => m.status === 'streaming')
+    const streaming = [...msgs].reverse().find((m: Message) => m.status === 'streaming')
     if (streaming) {
       updateMessage(streaming.id, activeThreadId, { status: 'done' })
     }
