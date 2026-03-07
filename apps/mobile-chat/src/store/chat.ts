@@ -51,8 +51,6 @@ interface ChatState {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  anthropicKey: '',
-  openaiKey: '',
   defaultModel: 'claude-sonnet-4-5',
   streamingEnabled: true,
   theme: 'dark',
@@ -61,7 +59,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 // ─── Store ───────────────────────────────────────────────────────────────────
 
 export const useChatStore = create<ChatState>()(
-  subscribeWithSelector((set, get) => ({
+  subscribeWithSelector((set: (fn: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void, get: () => ChatState) => ({
     threads: [],
     activeThreadId: null,
     messages: {},
@@ -99,7 +97,7 @@ export const useChatStore = create<ChatState>()(
         pinned: false,
       }
       await dbPutThread(thread)
-      set(s => ({ threads: [thread, ...s.threads] }))
+      set((s: ChatState) => ({ threads: [thread, ...s.threads] }))
       return id
     },
 
@@ -116,18 +114,18 @@ export const useChatStore = create<ChatState>()(
       if (!existing) return
       const updated = { ...existing, ...patch, updatedAt: Date.now() }
       await dbPutThread(updated)
-      set(s => ({
+      set((s: ChatState) => ({
         threads: s.threads.map(t => (t.id === id ? updated : t)),
       }))
     },
 
     deleteThread: async (id: string) => {
       await dbDeleteThread(id)
-      set(s => ({
-        threads: s.threads.filter(t => t.id !== id),
+      set((s: ChatState) => ({
+        threads: s.threads.filter((t: Thread) => t.id !== id),
         activeThreadId: s.activeThreadId === id ? null : s.activeThreadId,
         messages: Object.fromEntries(
-          Object.entries(s.messages).filter(([k]) => k !== id)
+          Object.entries(s.messages).filter(([k]: [string, Message[]]) => k !== id)
         ),
       }))
     },
@@ -142,7 +140,7 @@ export const useChatStore = create<ChatState>()(
       set({ isLoadingMessages: true })
       try {
         const msgs = await dbGetMessages(threadId)
-        set(s => ({
+        set((s: ChatState) => ({
           messages: { ...s.messages, [threadId]: msgs },
           isLoadingMessages: false,
         }))
@@ -152,11 +150,11 @@ export const useChatStore = create<ChatState>()(
       }
     },
 
-    addMessage: async (msg) => {
+    addMessage: async (msg: Omit<Message, "id" | "createdAt">) => {
       const id = nanoid()
       const full: Message = { ...msg, id, createdAt: Date.now() }
       await dbPutMessage(full)
-      set(s => ({
+      set((s: ChatState) => ({
         messages: {
           ...s.messages,
           [msg.threadId]: [...(s.messages[msg.threadId] ?? []), full],
@@ -171,10 +169,10 @@ export const useChatStore = create<ChatState>()(
       return full
     },
 
-    updateMessage: async (id, threadId, patch) => {
-      set(s => {
+    updateMessage: async (id: string, threadId: string, patch: Partial<Message>) => {
+      set((s: ChatState) => {
         const msgs = s.messages[threadId] ?? []
-        const updated = msgs.map(m => (m.id === id ? { ...m, ...patch } : m))
+        const updated = (msgs as Message[]).map((m: Message) => (m.id === id ? { ...m, ...patch } : m))
         return { messages: { ...s.messages, [threadId]: updated } }
       })
       // persist
@@ -197,7 +195,7 @@ export const useChatStore = create<ChatState>()(
 
     // ── UI ───────────────────────────────────────────────────────────────────
 
-    setSidebarOpen: (open) => set({ sidebarOpen: open }),
-    setSettingsOpen: (open) => set({ settingsOpen: open }),
+    setSidebarOpen: (open: boolean) => set({ sidebarOpen: open }),
+    setSettingsOpen: (open: boolean) => set({ settingsOpen: open }),
   }))
 )

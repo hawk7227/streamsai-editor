@@ -1,4 +1,8 @@
-import type { Message, AppSettings, ModelId } from '@/types'
+/// <reference types="vite/client" />
+import type { Message, ModelId } from '@/types'
+
+// API base — proxy URL injected at build time, falls back to same-origin
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 export interface StreamCallbacks {
   onToken: (token: string) => void
@@ -9,74 +13,71 @@ export interface StreamCallbacks {
 export function streamCompletion(
   messages: Pick<Message, 'role' | 'content'>[],
   model: ModelId,
-  settings: AppSettings,
+  threadId: string,
   callbacks: StreamCallbacks,
   signal?: AbortSignal
 ): void {
-  const provider = model.startsWith('claude') ? 'anthropic' : 'openai'
-
-  if (provider === 'anthropic') {
-    streamAnthropic(messages, model, settings, callbacks, signal)
-  } else {
-    streamOpenAI(messages, model, settings, callbacks, signal)
-  }
+  void _stream(messages, model, threadId, callbacks, signal)
 }
 
-// ─── Anthropic ───────────────────────────────────────────────────────────────
-
-async function streamAnthropic(
+async function _stream(
   messages: Pick<Message, 'role' | 'content'>[],
   model: ModelId,
-  settings: AppSettings,
+  threadId: string,
   { onToken, onDone, onError }: StreamCallbacks,
   signal?: AbortSignal
 ) {
-  if (!settings.anthropicKey) {
-    onError(new Error('Anthropic API key not set. Add it in Settings.'))
-    return
-  }
-
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(`${API_BASE}/api/chat/stream`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': settings.anthropicKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
       body: JSON.stringify({
-        model,
-        max_tokens: 4096,
-        stream: true,
         messages: messages.filter(m => m.role !== 'system'),
+        model,
+        threadId,
+        maxTokens: 4096,
       }),
     })
 
     if (!res.ok) {
-      const body = await res.text()
-      onError(new Error(`Anthropic ${res.status}: ${body}`))
+      let errMsg = `Server error ${res.status}`
+      try {
+        const body = await res.json() as { error?: string }
+        if (body.error) errMsg = body.error
+      } catch { /* use default */ }
+      onError(new Error(errMsg))
       return
     }
 
     const reader = res.body?.getReader()
-    if (!reader) { onError(new Error('No response body')); return }
+    if (!reader) { onError(new Error('No response stream')); return }
 
     const decoder = new TextDecoder()
     let full = ''
+    let buffer = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      const chunk = decoder.decode(value, { stream: true })
-      const lines = chunk.split('\n')
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         const data = line.slice(6).trim()
-        if (data === '[DONE]') continue
+        if (data === '[DONE]') { onDone(full); return }
         try {
-          const ev = JSON.parse(data) as { type: string; delta?: { type: string; text?: string }; usage?: { output_tokens: number } }
+          const ev = JSON.parse(data) as {
+            type?: string
+            delta?: { type?: string; text?: string }
+            choices?: Array<{ delta?: { content?: string }; finish_reason?: string }>
+            usage?: { output_tokens?: number }
+          }
+
+          // Anthropic format
           if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
             full += ev.delta.text
             onToken(ev.delta.text)
@@ -85,79 +86,38 @@ async function streamAnthropic(
             onDone(full, ev.usage.output_tokens)
             return
           }
-        } catch {
-          // malformed SSE line — skip
-        }
+
+          // OpenAI format
+          const token = ev.choices?.[0]?.delta?.content
+          if (token) { full += token; onToken(token) }
+          if (ev.choices?.[0]?.finish_reason === 'stop') { onDone(full); return }
+
+        } catch { /* malformed SSE line — skip */ }
       }
     }
     onDone(full)
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') return
+    if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('abort'))) return
     onError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
-// ─── OpenAI ──────────────────────────────────────────────────────────────────
-
-async function streamOpenAI(
-  messages: Pick<Message, 'role' | 'content'>[],
-  model: ModelId,
-  settings: AppSettings,
-  { onToken, onDone, onError }: StreamCallbacks,
-  signal?: AbortSignal
-) {
-  if (!settings.openaiKey) {
-    onError(new Error('OpenAI API key not set. Add it in Settings.'))
-    return
-  }
-
+export async function generateThreadTitle(
+  userMessage: string,
+  assistantMessage: string,
+  model: ModelId
+): Promise<string> {
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetch(`${API_BASE}/api/chat/title`, {
       method: 'POST',
-      signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.openaiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        stream: true,
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userMessage, assistantMessage, model }),
+      signal: AbortSignal.timeout(15_000),
     })
-
-    if (!res.ok) {
-      const body = await res.text()
-      onError(new Error(`OpenAI ${res.status}: ${body}`))
-      return
-    }
-
-    const reader = res.body?.getReader()
-    if (!reader) { onError(new Error('No response body')); return }
-
-    const decoder = new TextDecoder()
-    let full = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const chunk = decoder.decode(value, { stream: true })
-      for (const line of chunk.split('\n')) {
-        if (!line.startsWith('data: ')) continue
-        const data = line.slice(6).trim()
-        if (data === '[DONE]') { onDone(full); return }
-        try {
-          const ev = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> }
-          const token = ev.choices?.[0]?.delta?.content
-          if (token) { full += token; onToken(token) }
-        } catch {
-          // skip
-        }
-      }
-    }
-    onDone(full)
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') return
-    onError(err instanceof Error ? err : new Error(String(err)))
+    if (!res.ok) return 'New conversation'
+    const data = await res.json() as { title?: string }
+    return data.title ?? 'New conversation'
+  } catch {
+    return 'New conversation'
   }
 }
