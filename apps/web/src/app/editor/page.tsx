@@ -427,10 +427,13 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
   // ═══ GITHUB — fetch repos ═══
   const ghFetchRepos = async () => {
     if (!ghToken) return;
+    setGhLoading(true);
     try {
       const r = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated", { headers: { Authorization: `Bearer ${ghToken}` } });
       if (r.ok) { const data = await r.json(); setGhRepos(data); }
-    } catch { /* ignore */ }
+      else { console.error("GitHub repos fetch failed:", r.status); }
+    } catch (e) { console.error("GitHub repos fetch error:", e); }
+    setGhLoading(false);
   };
   useEffect(() => { if (ghToken && ghRepos.length === 0) ghFetchRepos(); }, [ghToken]);
 
@@ -664,7 +667,11 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
         <Tb onClick={download}>💾</Tb>
         <Tb onClick={() => setPanel(panel === "url" ? null : "url")}>🔗</Tb>
         <Tb onClick={() => setPanel(panel === "code" ? null : "code")}>&lt;/&gt;</Tb>
-        <Tb onClick={() => setPanel(panel === "github" ? null : "github")}>⬆️</Tb>
+        <Tb onClick={() => {
+          const next = panel === "github" ? null : "github";
+          setPanel(next);
+          if (next === "github" && ghToken) ghFetchRepos();
+        }}>⬆️</Tb>
         <button onClick={() => {
           const next = !inspectMode;
           setInspectMode(next);
@@ -829,7 +836,7 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                         </p>
                       </div>
                       <button
-                        onClick={() => setPanel("github")}
+                        onClick={() => { setPanel("github"); if (ghToken) ghFetchRepos(); }}
                         style={{
                           padding: "8px 16px", borderRadius: 6, background: "#f97316",
                           color: "#000", fontWeight: 700, fontSize: 11, border: "none", cursor: "pointer",
@@ -1031,10 +1038,13 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                 <GhInp label="Claude API Key (for chat)" type="password" value={claudeKey} onChange={e => setClaudeKey(e.target.value)} ph="sk-ant-..." />
                 {/* Repo dropdown */}
                 <label style={{ fontSize: 9, color: "#6b7280" }}>Repo
-                  <select value={ghRepo} onChange={e => { setGhRepo(e.target.value); setGhBrowsePath(""); setGhFiles([]); }} style={{ display: "block", width: "100%", marginTop: 2, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 10, outline: "none" }}>
-                    <option value="">Select repo...</option>
-                    {ghRepos.map((r: any) => <option key={r.full_name} value={r.full_name}>{r.full_name}</option>)}
-                  </select>
+                  <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
+                    <select value={ghRepo} onChange={e => { setGhRepo(e.target.value); setGhBrowsePath(""); setGhFiles([]); }} style={{ flex: 1, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: ghRepo ? "#e5e7eb" : "#6b7280", fontSize: 10, outline: "none" }}>
+                      <option value="">{ghLoading ? "Loading..." : ghRepos.length === 0 ? "No repos — click ↻" : "Select repo..."}</option>
+                      {ghRepos.map((r: any) => <option key={r.full_name} value={r.full_name}>{r.full_name}</option>)}
+                    </select>
+                    <button onClick={ghFetchRepos} title="Refresh repos" style={{ padding: "0 8px", borderRadius: 4, background: "#1f2937", border: "1px solid #374151", color: "#e5e7eb", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>↻</button>
+                  </div>
                 </label>
                 <GhInp label="Branch" value={ghBranch} onChange={e => setGhBranch(e.target.value)} />
                 {/* File dropdown */}
