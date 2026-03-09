@@ -469,7 +469,18 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
     try {
       const r = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${path}?ref=${ghBranch}`, { headers: { Authorization: `Bearer ${ghToken}` } });
       const data = await r.json();
-      if (data.content) { setCode(atob(data.content.replace(/\n/g, ""))); setGhPath(path); setLiveUrl(""); setPanel(null); }
+      if (data.content) {
+        setCode(atob(data.content.replace(/\n/g, "")));
+        setGhPath(path);
+        // DO NOT clear liveUrl — code editor and visual preview are independent
+        // Auto-map known paths to their live URLs
+        const pathToUrl: Record<string, string> = {
+          "src/app/express-checkout/page.tsx": "https://patient.medazonhealth.com/express-checkout",
+          "src/app/page.tsx": "https://patient.medazonhealth.com",
+        };
+        if (pathToUrl[path] && !liveUrl) setLiveUrl(pathToUrl[path]);
+        setPanel("code"); // Open Monaco so user sees the pulled file
+      }
     } catch { /* ignore */ }
     setGhLoading(false);
   };
@@ -991,9 +1002,9 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                   style={{ width: "100%", flex: 1, minHeight: 300, background: "#08090a", color: "#e5e7eb", border: "1px solid #1f2937", borderRadius: 6, padding: 10, fontSize: 12, fontFamily: "monospace", resize: "none", outline: "none", lineHeight: 1.5 }} />}
               </div>}
 
-              {/* URL */}
+              {/* URL — kept for standalone use */}
               {panel === "url" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <p style={{ fontSize: 10, color: "#9ca3af" }}>Load a live page into the device frame.</p>
+                <p style={{ fontSize: 10, color: "#9ca3af" }}>Load a live page into the device frame. This is independent of the code editor.</p>
                 <input value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="patient.medazonhealth.com" onKeyDown={e => e.key === "Enter" && loadUrl()} style={{ width: "100%", padding: "7px 9px", borderRadius: 5, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 11, fontFamily: "monospace", outline: "none" }} />
                 <button onClick={loadUrl} style={{ padding: "8px", borderRadius: 5, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 11, border: "none", cursor: "pointer" }}>Load URL</button>
                 {liveUrl && <button onClick={() => { setLiveUrl(""); setPanel(null); }} style={{ padding: "6px", borderRadius: 5, background: "#1a1b1e", color: "#e5e7eb", fontSize: 10, border: "1px solid #1f2937", cursor: "pointer" }}>Clear URL</button>}
@@ -1048,12 +1059,34 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                 </label>
                 <GhInp label="Branch" value={ghBranch} onChange={e => setGhBranch(e.target.value)} />
                 {/* File dropdown */}
-                <label style={{ fontSize: 9, color: "#6b7280" }}>File
+                <label style={{ fontSize: 9, color: "#6b7280" }}>File (loads into Code editor)
                   <select value={ghPath} onChange={e => { setGhPath(e.target.value); if (e.target.value) ghLoadFile(e.target.value); }} style={{ display: "block", width: "100%", marginTop: 2, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 10, outline: "none" }}>
                     <option value="">Select file...</option>
                     {ghFileList.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </label>
+                {/* Preview URL — independent of code editor */}
+                <div style={{ borderTop: "1px solid #1f2937", paddingTop: 8, marginTop: 2 }}>
+                  <div style={{ fontSize: 9, color: "#4b5563", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Visual Preview URL</div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <input
+                      value={liveUrl}
+                      onChange={e => setLiveUrl(e.target.value)}
+                      placeholder="https://patient.medazonhealth.com/..."
+                      onKeyDown={e => e.key === "Enter" && setPanel(null)}
+                      style={{ flex: 1, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 9, fontFamily: "monospace", outline: "none" }}
+                    />
+                    {liveUrl && <button onClick={() => setLiveUrl("")} title="Clear URL" style={{ padding: "0 8px", borderRadius: 4, background: "#1f2937", border: "1px solid #374151", color: "#f87171", fontSize: 11, cursor: "pointer" }}>✕</button>}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 4 }}>
+                    {["patient.medazonhealth.com/express-checkout", "patient.medazonhealth.com", "doctor.medazonhealth.com"].map(u =>
+                      <button key={u} onClick={() => setLiveUrl("https://" + u)} style={{ background: liveUrl === "https://" + u ? "#1f2937" : "none", border: liveUrl === "https://" + u ? "1px solid #374151" : "none", color: "#2dd4a0", cursor: "pointer", fontSize: 8, padding: "2px 5px", borderRadius: 3 }}>{u.split(".com")[1] || "/"}</button>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 8, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
+                    Preview URL is independent of the code editor.<br />Code → Monaco. Visual → iframe.
+                  </p>
+                </div>
                 <div style={{ display: "flex", gap: 4 }}>
                   <button onClick={() => ghBrowse(ghBrowsePath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#1f2937", color: "#e5e7eb", fontWeight: 600, fontSize: 10, border: "1px solid #374151", cursor: "pointer" }}>Browse</button>
                   <button onClick={() => ghLoadFile(ghPath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Pull</button>
