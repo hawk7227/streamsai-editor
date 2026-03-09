@@ -864,11 +864,12 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                 {/* Inspect overlay — blocks iframe clicks, captures position */}
                 {inspectMode && <div style={{ position: "absolute", inset: 0, cursor: liveUrl ? "default" : "crosshair", zIndex: 5 }}
                   onClick={(e) => {
-                    if (liveUrl) return; // cross-origin, handled by banner below
+                    if (liveUrl) return;
                     const rect = e.currentTarget.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    // Try to get element at click point from iframe
+                    // Overlay is inside the scaled div — divide by scale to get iframe coords
+                    const scale = zoom > 0 ? zoom : autoScale;
+                    const x = (e.clientX - rect.left) / scale;
+                    const y = (e.clientY - rect.top) / scale;
                     try {
                       const doc = iframeRef.current?.contentDocument;
                       if (doc) {
@@ -905,6 +906,38 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                     } catch {
                       // Should not hit this since liveUrl guard above handles it
                     }
+                  }}
+                  onMouseMove={(e) => {
+                    if (liveUrl) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const scale = zoom > 0 ? zoom : autoScale;
+                    const x = (e.clientX - rect.left) / scale;
+                    const y = (e.clientY - rect.top) / scale;
+                    try {
+                      const doc = iframeRef.current?.contentDocument;
+                      if (doc) {
+                        // Highlight hovered element
+                        doc.querySelectorAll("[data-ep-hover]").forEach((el: Element) => {
+                          (el as HTMLElement).style.outline = "";
+                          (el as HTMLElement).removeAttribute("data-ep-hover");
+                        });
+                        const el = doc.elementFromPoint(x, y) as HTMLElement | null;
+                        if (el && el.id !== "root") {
+                          el.style.outline = "2px solid rgba(249,115,22,0.6)";
+                          el.setAttribute("data-ep-hover", "1");
+                        }
+                      }
+                    } catch { /* ignore */ }
+                  }}
+                  onMouseLeave={() => {
+                    if (liveUrl) return;
+                    try {
+                      const doc = iframeRef.current?.contentDocument;
+                      doc?.querySelectorAll("[data-ep-hover]").forEach((el: Element) => {
+                        (el as HTMLElement).style.outline = "";
+                        (el as HTMLElement).removeAttribute("data-ep-hover");
+                      });
+                    } catch { /* ignore */ }
                   }}
                 >
                   {/* Cross-origin banner — shown when live URL is loaded */}
