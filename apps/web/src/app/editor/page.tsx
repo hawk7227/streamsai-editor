@@ -245,10 +245,12 @@ export default function EditorPro() {
       setProxyUrl(`/api/proxy?url=${encodeURIComponent(liveUrl)}`);
       setInspect(true);
       setRightPanel("props");
+      // Loading clears in iframe onLoad handler. Add timeout fallback.
+      setTimeout(() => setLoading(false), 15000);
     } catch (e) {
       alert("Pull failed: " + (e instanceof Error ? e.message : e));
+      setLoading(false);
     }
-    setLoading(false);
   }, [ghToken, ghRepo, ghBranch, ghPath]);
 
   // ── PUSH ─────────────────────────────────────────────────────────────────
@@ -349,16 +351,23 @@ export default function EditorPro() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  // Inject inspect script on iframe load
+  // Clear loading + color scan when iframe finishes loading
   useEffect(() => {
     const frame = iframeRef.current; if (!frame) return;
     const onLoad = () => {
-      if (!inspect) return;
+      setLoading(false);
+      // Try direct DOM color scan (works if proxy = same-origin)
       try {
         const doc = frame.contentDocument;
-        if (!doc || doc.getElementById("__ep_inspector")) return;
-        // Already injected by proxy — just confirm
-      } catch {}
+        if (doc?.body) {
+          const colors: string[] = []; const seen = new Set<string>();
+          doc.querySelectorAll("*").forEach((el) => {
+            const cs = getComputedStyle(el as Element);
+            [cs.color, cs.backgroundColor].forEach(c => { const h = hex(c); if (h && !seen.has(h)) { seen.add(h); colors.push(h); } });
+          });
+          if (colors.length > 0) setSwatches(colors.slice(0, 48));
+        }
+      } catch { /* cross-origin — bridge postMessage handles it */ }
     };
     frame.addEventListener("load", onLoad);
     return () => frame.removeEventListener("load", onLoad);

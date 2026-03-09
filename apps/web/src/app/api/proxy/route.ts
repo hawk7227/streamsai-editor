@@ -113,7 +113,14 @@ export async function GET(request: NextRequest) {
     })
 
     if (!response.ok) {
-      return NextResponse.json({ error: `Upstream ${response.status}` }, { status: response.status })
+      return new NextResponse(
+        `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#f87171;font-family:monospace;padding:20px">
+          <h2>Upstream Error ${response.status}</h2>
+          <p>The target server returned ${response.status} ${response.statusText}</p>
+          <p style="color:#6b7280;font-size:12px">URL: ${url}</p>
+        </body></html>`,
+        { headers: { 'Content-Type': 'text/html' }, status: 200 }
+      )
     }
 
     const contentType = response.headers.get('content-type') || ''
@@ -155,9 +162,13 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error: unknown) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Proxy error' },
-      { status: 500 }
+    const msg = error instanceof Error ? error.message : 'Proxy error'
+    return new NextResponse(
+      `<!DOCTYPE html><html><body style="background:#0a0a0a;color:#f87171;font-family:monospace;padding:20px">
+        <h2>Proxy Error</h2><p>${msg}</p>
+        <p style="color:#6b7280;font-size:12px">URL: ${url}</p>
+      </body></html>`,
+      { headers: { 'Content-Type': 'text/html' }, status: 200 }
     )
   }
 }
