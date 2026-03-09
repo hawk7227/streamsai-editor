@@ -124,6 +124,13 @@ type SelState = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function EditorPro() {
+  // Register service worker for proxy injection
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/ep-sw.js', { scope: '/' }).catch(() => {});
+    }
+  }, []);
+
   // Device + browser
   const [did, setDid] = useState("i15p");
   const [bid, setBid] = useState("saf");
@@ -210,43 +217,36 @@ export default function EditorPro() {
   const pull = useCallback(async () => {
     if (!ghToken || !ghPath) return;
     setLoading(true);
-    setProxyUrl(""); // clear any previous
+    setBlobContent("");
+    setProxyUrl("");
+    setSel(null);
+
     try {
-      // 1. Pull TSX source
+      // 1. Pull TSX source for write-back
       const r = await fetch(
         `https://api.github.com/repos/${ghRepo}/contents/${ghPath}?ref=${ghBranch}`,
         { headers: { Authorization: `Bearer ${ghToken}` } }
       );
       const d = await r.json();
       if (!d.content) throw new Error("No content from GitHub");
-      const raw = atob(d.content.replace(/\n/g, ""));
-      setTsxSrc(raw);
+      setTsxSrc(atob(d.content.replace(/\n/g, "")));
 
-      // 2. Convert TSX → HTML via server (extracts JSX return block, converts to static HTML)
-      const convR = await fetch("/api/editor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "tsx-to-html", tsx: raw }),
-      });
-
-      if (!convR.ok) {
-        const { error } = await convR.json().catch(() => ({ error: `HTTP ${convR.status}` }));
-        throw new Error(`Conversion failed: ${error}`);
+      // 2. Derive live URL — load via /api/proxy (SW intercepts + injects bridge)
+      const liveUrl = KNOWN[ghPath];
+      if (!liveUrl) {
+        throw new Error(`No live URL mapped for ${ghPath}. Add it to KNOWN in editor source.`);
       }
 
-      const { html } = await convR.json();
-      if (!html) throw new Error("Empty HTML returned");
+      // Wait for SW to be ready before setting URL
+      if ('serviceWorker' in navigator) {
+        await navigator.serviceWorker.ready;
+      }
 
-      // 3. Load as same-origin blob in iframe → inspect works
-      setProxyUrl("__blob__"); // signal that blob is loaded
-      setBlobContent(html);
+      setProxyUrl(`/api/proxy?url=${encodeURIComponent(liveUrl)}`);
       setInspect(true);
-      setSel(null);
       setRightPanel("props");
     } catch (e) {
       alert("Pull failed: " + (e instanceof Error ? e.message : e));
-      setLoading(false);
-      return;
     }
     setLoading(false);
   }, [ghToken, ghRepo, ghBranch, ghPath]);
@@ -364,27 +364,15 @@ export default function EditorPro() {
     return () => frame.removeEventListener("load", onLoad);
   }, [inspect]);
 
-  // Update iframe src when proxyUrl or blobContent changes
-  const blobUrlRef = useRef<string>("");
+  // Update iframe src when proxyUrl changes
   useEffect(() => {
     const frame = iframeRef.current; if (!frame) return;
-    if (proxyUrl === "__blob__" && blobContent) {
-      // Revoke previous blob URL
-      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
-      // Inject bridge script so postMessage style/text mutations work in blob mode
-      const injected = blobContent.includes('__ep_bridge')
-        ? blobContent
-        : blobContent.replace('</body>', BRIDGE_SCRIPT + '</body>') || blobContent + BRIDGE_SCRIPT;
-      const blob = new Blob([injected], { type: "text/html" });
-      const burl = URL.createObjectURL(blob);
-      blobUrlRef.current = burl;
-      frame.src = burl;
-    } else if (proxyUrl && proxyUrl !== "__blob__") {
-      frame.src = `/api/proxy?url=${encodeURIComponent(proxyUrl)}`;
+    if (proxyUrl) {
+      frame.src = proxyUrl; // full /api/proxy?url=... path, SW intercepts and injects bridge
     } else {
       frame.src = "about:blank";
     }
-  }, [proxyUrl, blobContent]);
+  }, [proxyUrl]);
 
   // ── Apply style / text ───────────────────────────────────────────────────
   const applyStyle = useCallback(
@@ -494,7 +482,7 @@ export default function EditorPro() {
     })).filter(g => g.props.length > 0);
   }, [sel]);
 
-  const hasContent = proxyUrl === "__blob__" || (!!proxyUrl && proxyUrl !== "__blob__");
+  const hasContent = !!proxyUrl;
   const displayScale = manualZoom > 0 ? manualZoom : scale;
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -574,8 +562,7 @@ export default function EditorPro() {
         <span style={{ color: "#71717a" }}>{dev.n}</span>
         <span>{dev.w}×{dev.h}</span>
         <span>Vis:{visH}px</span>
-        {proxyUrl === "__blob__" && <span style={{ color: "#2dd4a0", fontWeight: 700 }}>✓ BLOB — same-origin, inspectable</span>}
-        {proxyUrl && proxyUrl !== "__blob__" && <span style={{ color: "#f59e0b", fontWeight: 700 }}>PROXY → {proxyUrl.replace("https://", "")}</span>}
+        {proxyUrl && <span style={{ color: "#2dd4a0", fontWeight: 700 }}>✓ PROXY+SW — inspectable</span>}
         {tsxSrc && <span style={{ color: "#7c3aed" }}>TSX: {ghPath.split("/").pop()}</span>}
       </div>
 
@@ -602,7 +589,7 @@ export default function EditorPro() {
                 {brw.tc > 0 && (
                   <div style={{ height: brw.tc, background: "#18181b", borderBottom: "1px solid #27272a", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 5 }}>
                     <div style={{ width: dev.w * 0.6, height: 22, background: "#0a0a0a", borderRadius: 11, border: "1px solid #27272a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#52525b", gap: 4 }}>
-                      🔒 {proxyUrl === "__blob__" ? "blob preview" : proxyUrl ? new URL(proxyUrl).hostname : "preview"}
+                      🔒 {proxyUrl ? (proxyUrl.includes("url=") ? decodeURIComponent(proxyUrl.split("url=")[1]).replace("https://","") : proxyUrl) : "preview"}
                     </div>
                   </div>
                 )}
@@ -788,11 +775,7 @@ export default function EditorPro() {
 
                   {/* Status badge */}
                   <div style={{ padding: "8px 10px", borderRadius: 6, background: tsxSrc ? "rgba(45,212,160,.06)" : "rgba(249,115,22,.06)", border: `1px solid ${tsxSrc ? "rgba(45,212,160,.15)" : "rgba(249,115,22,.15)"}`, fontSize: 9, color: tsxSrc ? "#2dd4a0" : "#f97316", lineHeight: 1.5 }}>
-                    {proxyUrl === "__blob__"
-                      ? `✓ ${ghPath.split("/").pop()} — blob rendered, inspect ready`
-                      : tsxSrc
-                        ? "✓ TSX pulled — click Pull ✦ to render"
-                        : "Select a file and click Pull ✦ to load for visual editing"}
+                    {proxyUrl ? `✓ Live page loaded — click any element to inspect` : tsxSrc ? "TSX pulled — click Pull ✦ to load live preview" : "Select a file and click Pull ✦"}
                   </div>
 
                   {/* Action buttons */}
