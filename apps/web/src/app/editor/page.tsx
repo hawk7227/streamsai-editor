@@ -125,7 +125,8 @@ export default function EditorPro() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Preview URL — empty = blank slate
-  const [proxyUrl, setProxyUrl] = useState(""); // live page to proxy
+  const [proxyUrl, setProxyUrl] = useState(""); // "__blob__" = blob mode, URL = live proxy mode
+  const [blobContent, setBlobContent] = useState(""); // HTML string for blob iframe
   const [loading, setLoading]   = useState(false);
 
   // GitHub
@@ -180,30 +181,43 @@ export default function EditorPro() {
   const pull = useCallback(async () => {
     if (!ghToken || !ghPath) return;
     setLoading(true);
+    setProxyUrl(""); // clear any previous
     try {
-      // 1. Pull TSX source for write-back
+      // 1. Pull TSX source
       const r = await fetch(
         `https://api.github.com/repos/${ghRepo}/contents/${ghPath}?ref=${ghBranch}`,
         { headers: { Authorization: `Bearer ${ghToken}` } }
       );
       const d = await r.json();
-      if (!d.content) throw new Error("No content returned from GitHub");
-      setTsxSrc(atob(d.content.replace(/\n/g, "")));
+      if (!d.content) throw new Error("No content from GitHub");
+      const raw = atob(d.content.replace(/\n/g, ""));
+      setTsxSrc(raw);
 
-      // 2. Derive live URL and load via proxy (same-origin after proxy)
-      const liveUrl = KNOWN[ghPath] || null;
-      if (liveUrl) {
-        setProxyUrl(liveUrl);
-      } else {
-        // No known URL — show placeholder message
-        setProxyUrl("");
-        alert(`No live URL mapped for ${ghPath}.\nAdd it to KNOWN in the editor source.`);
+      // 2. Convert TSX → HTML via server (extracts JSX return block, converts to static HTML)
+      const convR = await fetch("/api/editor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "tsx-to-html", tsx: raw }),
+      });
+
+      if (!convR.ok) {
+        const { error } = await convR.json().catch(() => ({ error: `HTTP ${convR.status}` }));
+        throw new Error(`Conversion failed: ${error}`);
       }
+
+      const { html } = await convR.json();
+      if (!html) throw new Error("Empty HTML returned");
+
+      // 3. Load as same-origin blob in iframe → inspect works
+      setProxyUrl("__blob__"); // signal that blob is loaded
+      setBlobContent(html);
       setInspect(true);
       setSel(null);
       setRightPanel("props");
     } catch (e) {
       alert("Pull failed: " + (e instanceof Error ? e.message : e));
+      setLoading(false);
+      return;
     }
     setLoading(false);
   }, [ghToken, ghRepo, ghBranch, ghPath]);
@@ -318,15 +332,23 @@ export default function EditorPro() {
     return () => frame.removeEventListener("load", onLoad);
   }, [inspect]);
 
-  // Update iframe src when proxyUrl changes
+  // Update iframe src when proxyUrl or blobContent changes
+  const blobUrlRef = useRef<string>("");
   useEffect(() => {
     const frame = iframeRef.current; if (!frame) return;
-    if (proxyUrl) {
+    if (proxyUrl === "__blob__" && blobContent) {
+      // Revoke previous blob URL
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      const blob = new Blob([blobContent], { type: "text/html" });
+      const burl = URL.createObjectURL(blob);
+      blobUrlRef.current = burl;
+      frame.src = burl;
+    } else if (proxyUrl && proxyUrl !== "__blob__") {
       frame.src = `/api/proxy?url=${encodeURIComponent(proxyUrl)}`;
     } else {
       frame.src = "about:blank";
     }
-  }, [proxyUrl]);
+  }, [proxyUrl, blobContent]);
 
   // ── Apply style / text ───────────────────────────────────────────────────
   const applyStyle = useCallback(
@@ -436,7 +458,7 @@ export default function EditorPro() {
     })).filter(g => g.props.length > 0);
   }, [sel]);
 
-  const hasContent = !!proxyUrl;
+  const hasContent = proxyUrl === "__blob__" || (!!proxyUrl && proxyUrl !== "__blob__");
   const displayScale = manualZoom > 0 ? manualZoom : scale;
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -516,7 +538,8 @@ export default function EditorPro() {
         <span style={{ color: "#71717a" }}>{dev.n}</span>
         <span>{dev.w}×{dev.h}</span>
         <span>Vis:{visH}px</span>
-        {proxyUrl && <span style={{ color: "#2dd4a0", fontWeight: 700 }}>PROXY → {proxyUrl.replace("https://", "")}</span>}
+        {proxyUrl === "__blob__" && <span style={{ color: "#2dd4a0", fontWeight: 700 }}>✓ BLOB — same-origin, inspectable</span>}
+        {proxyUrl && proxyUrl !== "__blob__" && <span style={{ color: "#f59e0b", fontWeight: 700 }}>PROXY → {proxyUrl.replace("https://", "")}</span>}
         {tsxSrc && <span style={{ color: "#7c3aed" }}>TSX: {ghPath.split("/").pop()}</span>}
       </div>
 
@@ -543,7 +566,7 @@ export default function EditorPro() {
                 {brw.tc > 0 && (
                   <div style={{ height: brw.tc, background: "#18181b", borderBottom: "1px solid #27272a", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 5 }}>
                     <div style={{ width: dev.w * 0.6, height: 22, background: "#0a0a0a", borderRadius: 11, border: "1px solid #27272a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#52525b", gap: 4 }}>
-                      🔒 {proxyUrl ? new URL(proxyUrl).hostname : "preview"}
+                      🔒 {proxyUrl === "__blob__" ? "blob preview" : proxyUrl ? new URL(proxyUrl).hostname : "preview"}
                     </div>
                   </div>
                 )}
@@ -631,9 +654,11 @@ export default function EditorPro() {
 
                   {/* Status badge */}
                   <div style={{ padding: "8px 10px", borderRadius: 6, background: tsxSrc ? "rgba(45,212,160,.06)" : "rgba(249,115,22,.06)", border: `1px solid ${tsxSrc ? "rgba(45,212,160,.15)" : "rgba(249,115,22,.15)"}`, fontSize: 9, color: tsxSrc ? "#2dd4a0" : "#f97316", lineHeight: 1.5 }}>
-                    {tsxSrc
-                      ? `✓ ${ghPath.split("/").pop()} pulled — proxy rendering live page`
-                      : "Select a file and click Pull ✦ to load for visual editing"}
+                    {proxyUrl === "__blob__"
+                      ? `✓ ${ghPath.split("/").pop()} — blob rendered, inspect ready`
+                      : tsxSrc
+                        ? "✓ TSX pulled — click Pull ✦ to render"
+                        : "Select a file and click Pull ✦ to load for visual editing"}
                   </div>
 
                   {/* Action buttons */}

@@ -33,6 +33,20 @@ async function callClaude(prompt: string, apiKey: string): Promise<string> {
   return data.content?.find((b: { type: string }) => b.type === 'text')?.text ?? ''
 }
 
+function extractReturnBlock(src: string): string {
+  const returnMatch = src.match(/return\s*\(\s*([\s\S]+)/);
+  if (!returnMatch) return src.slice(0, 8000);
+  const after = returnMatch[1];
+  let depth = 1, i = 0;
+  while (i < after.length && depth > 0) {
+    if (after[i] === '(') depth++;
+    else if (after[i] === ')') depth--;
+    i++;
+  }
+  const jsx = after.slice(0, i - 1).trim();
+  return jsx.length > 200 ? jsx : src.slice(0, 8000);
+}
+
 export async function POST(req: NextRequest): Promise<Response> {
   let apiKey: string
   try {
@@ -53,29 +67,37 @@ export async function POST(req: NextRequest): Promise<Response> {
     const tsx = body.tsx?.trim()
     if (!tsx) return err('tsx is required')
 
-    const prompt = `Convert this React/Next.js TSX component to a single self-contained HTML snippet that visually matches the UI exactly.
+    const jsxBlock = extractReturnBlock(tsx);
+    const hasTailwind = /className=/.test(tsx);
 
-Rules:
-- Output ONLY the inner HTML body content — no <!DOCTYPE>, no <html>, no <head>, no <body> tags
-- Preserve ALL inline styles exactly character-for-character
-- Replace Tailwind classes with equivalent inline styles
-- Replace JSX expressions like {variable} with realistic placeholder values matching the context
-- Remove all event handlers, useState, imports, TypeScript types, "use client"
-- Keep all text content, colors, spacing, borders, shadows, and layout intact
-- Use only plain HTML elements and inline styles
-- Add <script src="https://cdn.tailwindcss.com"></script> at the very top if Tailwind classes exist
-- The result must render correctly as static HTML in an iframe
+    const prompt = `You are converting a React JSX snippet to plain static HTML that renders visually correctly.
 
-TSX source:
-\`\`\`tsx
-${tsx.slice(0, 14000)}
+INPUT JSX (this is the return value of a React component — treat it as HTML):
+\`\`\`
+${jsxBlock.slice(0, 10000)}
 \`\`\`
 
-Respond with ONLY the HTML content, no explanation, no markdown code fences.`
+OUTPUT RULES — follow every rule exactly:
+1. Output a complete self-contained HTML document: <!DOCTYPE html><html><head>...</head><body>...</body></html>
+2. ${hasTailwind ? 'Include <script src="https://cdn.tailwindcss.com"></script> in <head>' : 'No Tailwind needed'}
+3. Convert JSX to HTML: className → class, style={{...}} → style="..." (camelCase → kebab-case)
+4. Replace {variable} expressions with realistic placeholder text matching context (e.g. "Dr. Sarah Johnson", "$189", "Step 1 of 3")
+5. Remove all event handlers (onClick, onChange, onSubmit etc) — keep the element
+6. Keep ALL text content, colors, spacing, borders, shadows intact
+7. Add <style>body{margin:0;padding:0;background:#0b0f0c;} *{box-sizing:border-box;}</style> in head
+8. The page must render without errors or blank content
+
+CRITICAL: Do NOT output the JSX source. Output ONLY valid HTML. No markdown fences. No explanation.`
 
     try {
       const html = await callClaude(prompt, apiKey)
-      const clean = html.replace(/^```html?\n?/i, '').replace(/\n?```$/,'').trim()
+      const clean = html.replace(/^```html?\n?/i, '').replace(/\n?```$/, '').trim()
+      // Validate it looks like HTML (not raw JSX/TSX source)
+      const looksLikeHtml = clean.includes('<!DOCTYPE') || clean.includes('<html') || clean.includes('<div') || clean.includes('<section')
+      const looksLikeTsx = clean.startsWith('"use client"') || clean.includes('import {') || clean.includes('export default')
+      if (looksLikeTsx || !looksLikeHtml) {
+        return err('Conversion returned source code instead of HTML — model did not follow instructions', 502)
+      }
       return new Response(JSON.stringify({ html: clean }), {
         headers: { 'Content-Type': 'application/json' },
       })
