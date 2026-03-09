@@ -205,6 +205,10 @@ export default function VisualEditorPro() {
     return () => ro.disconnect();
   }, [dev, brw]);
 
+  // ═══ TSX → HTML conversion state (must be before previewHTML memo) ═══
+  const [htmlPreview, setHtmlPreview] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
+
   // ═══ PREVIEW HTML ═══
   const previewHTML = useMemo(() => `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=${dev.w},initial-scale=1,viewport-fit=cover">
@@ -310,7 +314,7 @@ if(c&&c!=='transparent'&&c!=='rgba(0, 0, 0, 0)'&&c!=='rgb(0, 0, 0)'){colors.add(
 window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
 },500);
 <\/script>
-</head><body><div id="root" style="width:${dev.w}px;height:${visH}px;overflow:auto;">${code}</div></body></html>`, [code, dev, brw, et, eb, visH]);
+</head><body><div id="root" style="width:${dev.w}px;height:${visH}px;overflow:auto;">${htmlPreview ?? code}</div></body></html>`, [htmlPreview, code, dev, brw, et, eb, visH]);
 
   useEffect(() => {
     if (!iframeRef.current) return;
@@ -464,22 +468,71 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
     } catch { setGhFiles([]); }
     setGhLoading(false);
   };
+  // ═══ TSX → HTML conversion state ═══
+  const tsxToHtml = async (tsx: string, apiKey: string) => {
+    if (!apiKey) return null;
+    setConverting(true);
+    try {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8000,
+          messages: [{
+            role: "user",
+            content: `Convert this React/Next.js TSX component to a single self-contained HTML snippet that visually matches the UI. Rules:
+- Output ONLY the inner HTML (no <!DOCTYPE>, no <html>, no <head>, no <body> tags)
+- Preserve ALL inline styles exactly as-is
+- Replace Tailwind classes with equivalent inline styles
+- Replace JSX expressions like {variable} with realistic placeholder values
+- Remove all event handlers, useState, imports, TypeScript types
+- Keep all text content, colors, spacing, and layout intact
+- Use only HTML elements and inline styles
+- Include <script src="https://cdn.tailwindcss.com"></script> at the top if Tailwind classes are present
+- The output must render correctly as static HTML
+
+TSX source:
+\`\`\`tsx
+${tsx.slice(0, 12000)}
+\`\`\`
+
+Respond with ONLY the HTML, no explanation, no markdown fences.`,
+          }],
+        }),
+      });
+      const data = await r.json();
+      const html = data.content?.find((b: any) => b.type === "text")?.text || "";
+      return html.replace(/```html|```/g, "").trim();
+    } catch { return null; }
+    finally { setConverting(false); }
+  };
+
   const ghLoadFile = async (path: string) => {
     if (!ghToken || !ghRepo) return; setGhLoading(true);
     try {
       const r = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${path}?ref=${ghBranch}`, { headers: { Authorization: `Bearer ${ghToken}` } });
       const data = await r.json();
       if (data.content) {
-        setCode(atob(data.content.replace(/\n/g, "")));
+        const raw = atob(data.content.replace(/\n/g, ""));
+        setCode(raw);
         setGhPath(path);
-        // DO NOT clear liveUrl — code editor and visual preview are independent
-        // Auto-map known paths to their live URLs
-        const pathToUrl: Record<string, string> = {
-          "src/app/express-checkout/page.tsx": "https://patient.medazonhealth.com/express-checkout",
-          "src/app/page.tsx": "https://patient.medazonhealth.com",
-        };
-        if (pathToUrl[path] && !liveUrl) setLiveUrl(pathToUrl[path]);
-        setPanel("code"); // Open Monaco so user sees the pulled file
+        setLiveUrl(""); // clear live URL so blob preview renders
+        setHtmlPreview(null);
+        setPanel(null);
+        // If Claude key available, convert TSX → HTML for visual editing
+        if (claudeKey) {
+          const html = await tsxToHtml(raw, claudeKey);
+          if (html) setHtmlPreview(html);
+        } else {
+          // No Claude key — show prompt to add key
+          setPanel("github");
+        }
       }
     } catch { /* ignore */ }
     setGhLoading(false);
@@ -563,20 +616,75 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
     return w;
   }, [did]);
 
-  // ═══ APPLY STYLE — sends to iframe + updates sel state ═══
+  // ═══ WRITE-BACK: DOM changes → TSX source via Claude ═══
+  const writeBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingChanges = useRef<{prop: string; value: string; elText: string}[]>([]);
+
+  const writeBackToTsx = useCallback(async (changes: {prop: string; value: string; elText: string}[]) => {
+    if (!claudeKey || !ghPath || !code) return;
+    try {
+      const changeDesc = changes.map(c => `- Set ${c.prop} to "${c.value}" on element containing text: "${c.elText}"`).join("\n");
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": claudeKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8000,
+          messages: [{
+            role: "user",
+            content: `Apply these visual edits to the TSX source. Only modify the style/className values, nothing else. Return the complete updated TSX file:
+
+Changes to apply:
+${changeDesc}
+
+TSX source:
+\`\`\`tsx
+${code}
+\`\`\`
+
+Return ONLY the updated TSX file content, no explanation, no markdown fences.`,
+          }],
+        }),
+      });
+      const data = await r.json();
+      const updated = data.content?.find((b: any) => b.type === "text")?.text || "";
+      if (updated && updated.includes("use client")) {
+        setCode(updated.replace(/```tsx?|```/g, "").trim());
+        setSaveStatus("saved");
+      }
+    } catch { /* silent */ }
+  }, [claudeKey, ghPath, code]);
+
+  // ═══ APPLY STYLE — sends to iframe + updates sel state + queues write-back ═══
   const applyStyle = useCallback((prop: string, value: string) => {
-    // Try direct DOM manipulation first (same-origin)
+    let elText = "";
     setSel((prev: any) => {
+      elText = prev?.txt || "";
       if (prev?._el) {
         try { prev._el.style[prop] = value; } catch { /* ignore */ }
       }
       return prev ? { ...prev, sty: { ...prev.sty, [prop]: value } } : prev;
     });
-    // Also try postMessage for code-based previews
     if (iframeRef.current?.contentWindow) {
-      try { iframeRef.current.contentWindow.postMessage({ type: 'applyStyle', prop, value }, '*'); } catch { /* ignore */ }
+      try { iframeRef.current.contentWindow.postMessage({ type: "applyStyle", prop, value }, "*"); } catch { /* ignore */ }
     }
-  }, []);
+    // Queue write-back to TSX source
+    if (ghPath && claudeKey) {
+      pendingChanges.current.push({ prop, value, elText });
+      setSaveStatus("saving");
+      if (writeBackTimer.current) clearTimeout(writeBackTimer.current);
+      writeBackTimer.current = setTimeout(() => {
+        const changes = [...pendingChanges.current];
+        pendingChanges.current = [];
+        writeBackToTsx(changes);
+      }, 1500);
+    }
+  }, [ghPath, claudeKey, writeBackToTsx]);
 
   const applyText = useCallback((value: string) => {
     setSel((prev: any) => {
@@ -586,9 +694,20 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
       return prev ? { ...prev, txt: value } : prev;
     });
     if (iframeRef.current?.contentWindow) {
-      try { iframeRef.current.contentWindow.postMessage({ type: 'setText', value }, '*'); } catch { /* ignore */ }
+      try { iframeRef.current.contentWindow.postMessage({ type: "setText", value }, "*"); } catch { /* ignore */ }
     }
-  }, []);
+    // Queue write-back
+    if (ghPath && claudeKey) {
+      pendingChanges.current.push({ prop: "__text__", value, elText: value });
+      setSaveStatus("saving");
+      if (writeBackTimer.current) clearTimeout(writeBackTimer.current);
+      writeBackTimer.current = setTimeout(() => {
+        const changes = [...pendingChanges.current];
+        pendingChanges.current = [];
+        writeBackToTsx(changes);
+      }, 1500);
+    }
+  }, [ghPath, claudeKey, writeBackToTsx]);
 
   // ═══ STYLE GROUPS for inspector ═══
   const styleGroups = useMemo(() => {
@@ -703,6 +822,8 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
           {f2Open ? "📱📱" : "📱+"}
         </button>
         <span style={{ fontSize: 9, color: saveStatus === "saved" ? "#2dd4a0" : "#f59e0b" }}>●</span>
+        {converting && <span style={{ fontSize: 9, color: "#7c3aed", fontWeight: 700 }}>⚙ Converting...</span>}
+        {saveStatus === "saving" && ghPath && <span style={{ fontSize: 9, color: "#f59e0b", fontWeight: 700 }}>↑ Writing back...</span>}
         {pushSt && <span style={{ fontSize: 9, color: pushSt.includes("✗") ? "#f87171" : "#2dd4a0" }}>{pushSt}</span>}
       </div>
 
@@ -785,6 +906,14 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
               {/* Content */}
               <div style={{ width: dev.w, height: visH, position: "relative" }}>
                 <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block", pointerEvents: inspectMode ? "none" : "auto" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
+                {/* Converting overlay */}
+                {converting && (
+                  <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, zIndex: 10 }}>
+                    <div style={{ width: 24, height: 24, border: "2px solid #7c3aed", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+                    <p style={{ fontSize: 11, color: "#a78bfa", fontWeight: 600 }}>Converting TSX → visual preview...</p>
+                    <p style={{ fontSize: 9, color: "#6b7280", textAlign: "center", maxWidth: 200 }}>Claude is rendering your component for visual editing</p>
+                  </div>
+                )}
                 {/* Inspect overlay — blocks iframe clicks, captures position */}
                 {inspectMode && <div style={{ position: "absolute", inset: 0, cursor: liveUrl ? "default" : "crosshair", zIndex: 5 }}
                   onClick={(e) => {
@@ -1089,7 +1218,9 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                 </div>
                 <div style={{ display: "flex", gap: 4 }}>
                   <button onClick={() => ghBrowse(ghBrowsePath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#1f2937", color: "#e5e7eb", fontWeight: 600, fontSize: 10, border: "1px solid #374151", cursor: "pointer" }}>Browse</button>
-                  <button onClick={() => ghLoadFile(ghPath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Pull</button>
+                  <button onClick={() => ghLoadFile(ghPath)} title={!claudeKey ? "Add Claude API Key above to enable visual editing" : "Pull file for visual editing"} style={{ flex: 1, padding: "7px", borderRadius: 5, background: claudeKey ? "#2dd4a0" : "#374151", color: claudeKey ? "#000" : "#9ca3af", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>
+                    {claudeKey ? "Pull ✦" : "Pull (needs key)"}
+                  </button>
                   <button onClick={push} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#f97316", color: "#fff", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Push</button>
                 </div>
                 <button onClick={download} style={{ padding: "7px", borderRadius: 5, background: "#1a1b1e", color: "#e5e7eb", fontSize: 10, border: "1px solid #1f2937", cursor: "pointer" }}>Download</button>
