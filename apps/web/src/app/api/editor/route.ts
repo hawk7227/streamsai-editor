@@ -34,16 +34,38 @@ async function callClaude(prompt: string, apiKey: string): Promise<string> {
 }
 
 function extractReturnBlock(src: string): string {
-  const returnMatch = src.match(/return\s*\(\s*([\s\S]+)/);
-  if (!returnMatch) return src.slice(0, 8000);
-  const after = returnMatch[1];
+  // Find ALL top-level `  return (` occurrences (2-space indent = component body)
+  // We want the LAST one — that's the main page component's return
+  const lines = src.split('\n');
+  let lastReturnLine = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    // Match `  return (` with exactly 2 spaces (top-level component return)
+    if (/^  return\s*\(/.test(lines[i])) {
+      lastReturnLine = i;
+    }
+  }
+
+  if (lastReturnLine === -1) {
+    // Fallback: find any return (
+    const m = src.match(/return\s*\(\s*([\s\S]+)/);
+    if (!m) return src.slice(0, 8000);
+    return m[1].slice(0, 8000);
+  }
+
+  // Extract from that line forward, find balanced parens
+  const after = lines.slice(lastReturnLine).join('\n');
+  const startParen = after.indexOf('(');
+  if (startParen === -1) return src.slice(0, 8000);
+
+  const content = after.slice(startParen + 1);
   let depth = 1, i = 0;
-  while (i < after.length && depth > 0) {
-    if (after[i] === '(') depth++;
-    else if (after[i] === ')') depth--;
+  while (i < content.length && depth > 0) {
+    if (content[i] === '(') depth++;
+    else if (content[i] === ')') depth--;
     i++;
   }
-  const jsx = after.slice(0, i - 1).trim();
+  const jsx = content.slice(0, i - 1).trim();
   return jsx.length > 200 ? jsx : src.slice(0, 8000);
 }
 
@@ -70,24 +92,38 @@ export async function POST(req: NextRequest): Promise<Response> {
     const jsxBlock = extractReturnBlock(tsx);
     const hasTailwind = /className=/.test(tsx);
 
-    const prompt = `You are converting a React JSX snippet to plain static HTML that renders visually correctly.
+    const prompt = `You are converting a React JSX snippet to plain static HTML for visual preview in a mobile iframe.
 
-INPUT JSX (this is the return value of a React component — treat it as HTML):
+INPUT JSX (the main return block of a React checkout page):
 \`\`\`
-${jsxBlock.slice(0, 10000)}
+${jsxBlock.slice(0, 12000)}
 \`\`\`
 
-OUTPUT RULES — follow every rule exactly:
-1. Output a complete self-contained HTML document: <!DOCTYPE html><html><head>...</head><body>...</body></html>
-2. ${hasTailwind ? 'Include <script src="https://cdn.tailwindcss.com"></script> in <head>' : 'No Tailwind needed'}
-3. Convert JSX to HTML: className → class, style={{...}} → style="..." (camelCase → kebab-case)
-4. Replace {variable} expressions with realistic placeholder text matching context (e.g. "Dr. Sarah Johnson", "$189", "Step 1 of 3")
-5. Remove all event handlers (onClick, onChange, onSubmit etc) — keep the element
-6. Keep ALL text content, colors, spacing, borders, shadows intact
-7. Add <style>body{margin:0;padding:0;background:#0b0f0c;} *{box-sizing:border-box;}</style> in head
-8. The page must render without errors or blank content
+CONVERSION RULES:
+1. Output a COMPLETE HTML document starting with <!DOCTYPE html>
+2. In <head> include:
+   - <meta charset="UTF-8">
+   - <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   - <script src="https://cdn.tailwindcss.com"></script>
+   - <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+   - <style>*, *::before, *::after { box-sizing: border-box; } body { margin: 0; padding: 0; font-family: Inter, system-ui, sans-serif; height: 100dvh; overflow: hidden; }</style>
+3. Attribute conversion: className → class, htmlFor → for
+4. Inline style conversion: style={{ fontSize: "14px", color: "#fff" }} → style="font-size: 14px; color: #fff;"
+5. Replace ALL JSX expressions in curly braces with realistic values:
+   - {currentStep} → 1
+   - {totalSteps} → 5  
+   - {price} or prices → $189
+   - {patientName} → Sarah Johnson
+   - Boolean conditionals: render the DEFAULT/INITIAL state (step 1, not loading)
+   - If you see isLoading, loading, Processing — render the NON-loading state instead
+6. Remove: onClick={}, onChange={}, onSubmit={}, ref={}, key={} 
+7. Keep: class, style, id, type, placeholder, name, value, disabled, href
+8. Self-close void elements: <input />, <br />, <img />, <hr />
 
-CRITICAL: Do NOT output the JSX source. Output ONLY valid HTML. No markdown fences. No explanation.`
+CRITICAL RULES:
+- Output ONLY the final HTML document. Zero JSX syntax. Zero TypeScript.
+- No markdown code fences. No explanation text.
+- The rendered page MUST show actual UI content (not a spinner, not blank, not "Processing upload")`
 
     try {
       const html = await callClaude(prompt, apiKey)
