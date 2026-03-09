@@ -410,6 +410,8 @@ export default function EditorPro() {
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!dragRef.current) return;
+      e.preventDefault();
+      document.body.style.userSelect = "none";
       const dx = (e.clientX - dragRef.current.startX) / scale;
       const dy = (e.clientY - dragRef.current.startY) / scale;
       const iw = iframeRef.current?.contentWindow;
@@ -427,7 +429,7 @@ export default function EditorPro() {
         iw.postMessage({ type: "ep-style", prop: "height", value: Math.max(10, dragRef.current.origH + dy) + "px" }, "*");
       }
     };
-    const onUp = () => { dragRef.current = null; };
+    const onUp = () => { dragRef.current = null; document.body.style.userSelect = ""; };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
@@ -568,7 +570,7 @@ export default function EditorPro() {
                   {/* Inspect overlay + selection handles */}
                   {inspect && (
                     <div
-                      style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 5 }}
+                      style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 5, userSelect: "none" }}
 
                     >
                       {/* Selection handles — rendered on top of selected element */}
@@ -579,23 +581,24 @@ export default function EditorPro() {
                           <div style={{ position: "absolute", left: x - pad, top: y - pad, width: w + pad * 2, height: h + pad * 2, pointerEvents: "none", zIndex: 10 }}>
                             {/* Selection border */}
                             <div style={{ position: "absolute", inset: 0, border: "2px solid #f97316", borderRadius: 2, pointerEvents: "none" }} />
-                            {/* Drag handle — top bar */}
+                            {/* Drag handle — move */}
                             <div
                               title="Drag to move"
-                              style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", width: 40, height: 12, background: "#f97316", borderRadius: "3px 3px 0 0", cursor: "move", pointerEvents: "all", display: "flex", alignItems: "center", justifyContent: "center" }}
+                              style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", width: 40, height: 12, background: "#f97316", borderRadius: "3px 3px 0 0", cursor: "move", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}
                               onMouseDown={e => {
-                                e.stopPropagation();
+                                e.preventDefault(); e.stopPropagation();
                                 if (!sel) return;
-                                dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origW: parseFloat(sel.sty.width) || sel.rect.w, origH: parseFloat(sel.sty.height) || sel.rect.h, origLeft: parseFloat(sel.sty.left) || 0, origTop: parseFloat(sel.sty.top) || 0 };                              }}
+                                dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origW: parseFloat(sel.sty.width) || sel.rect.w, origH: parseFloat(sel.sty.height) || sel.rect.h, origLeft: parseFloat(sel.sty.left) || 0, origTop: parseFloat(sel.sty.top) || 0 };
+                              }}
                             >
                               <div style={{ width: 14, height: 2, borderRadius: 1, background: "rgba(0,0,0,0.5)" }} />
                             </div>
                             {/* Resize BR corner */}
                             <div
                               title="Drag to resize"
-                              style={{ position: "absolute", bottom: -5, right: -5, width: 10, height: 10, background: "#f97316", borderRadius: 2, cursor: "se-resize", pointerEvents: "all" }}
+                              style={{ position: "absolute", bottom: -5, right: -5, width: 10, height: 10, background: "#f97316", borderRadius: 2, cursor: "se-resize", pointerEvents: "auto" }}
                               onMouseDown={e => {
-                                e.stopPropagation();
+                                e.preventDefault(); e.stopPropagation();
                                 if (!sel) return;
                                 dragRef.current = { mode: "resize-br", startX: e.clientX, startY: e.clientY, origW: parseFloat(sel.sty.width) || sel.rect.w, origH: parseFloat(sel.sty.height) || sel.rect.h, origLeft: 0, origTop: 0 };
                               }}
@@ -603,9 +606,9 @@ export default function EditorPro() {
                             {/* Resize right edge */}
                             <div
                               title="Drag to resize width"
-                              style={{ position: "absolute", top: "50%", right: -5, transform: "translateY(-50%)", width: 8, height: 20, background: "#f97316", borderRadius: 3, cursor: "e-resize", pointerEvents: "all" }}
+                              style={{ position: "absolute", top: "50%", right: -5, transform: "translateY(-50%)", width: 8, height: 20, background: "#f97316", borderRadius: 3, cursor: "e-resize", pointerEvents: "auto" }}
                               onMouseDown={e => {
-                                e.stopPropagation();
+                                e.preventDefault(); e.stopPropagation();
                                 if (!sel) return;
                                 dragRef.current = { mode: "resize-r", startX: e.clientX, startY: e.clientY, origW: parseFloat(sel.sty.width) || sel.rect.w, origH: 0, origLeft: 0, origTop: 0 };
                               }}
@@ -613,9 +616,9 @@ export default function EditorPro() {
                             {/* Resize bottom edge */}
                             <div
                               title="Drag to resize height"
-                              style={{ position: "absolute", bottom: -5, left: "50%", transform: "translateX(-50%)", width: 20, height: 8, background: "#f97316", borderRadius: 3, cursor: "s-resize", pointerEvents: "all" }}
+                              style={{ position: "absolute", bottom: -5, left: "50%", transform: "translateX(-50%)", width: 20, height: 8, background: "#f97316", borderRadius: 3, cursor: "s-resize", pointerEvents: "auto" }}
                               onMouseDown={e => {
-                                e.stopPropagation();
+                                e.preventDefault(); e.stopPropagation();
                                 if (!sel) return;
                                 dragRef.current = { mode: "resize-b", startX: e.clientX, startY: e.clientY, origW: 0, origH: parseFloat(sel.sty.height) || sel.rect.h, origLeft: 0, origTop: 0 };
                               }}
