@@ -13,11 +13,29 @@ const HANDLE_HIT      = 8; // wider hit target
 // ── Studio ─────────────────────────────────────────────────────────────────────
 
 export default function StudioPage() {
-  const [leftW,   setLeftW]   = useState(300);
-  const [centerW, setCenterW] = useState(620);
-  const [leftOpen,   setLeftOpen]   = useState(true);
-  const [centerOpen, setCenterOpen] = useState(true);
+  const [leftW,   setLeftW]   = useState(() => {
+    if (typeof window === "undefined") return 300;
+    return Number(localStorage.getItem("studio:leftW")   ?? 300);
+  });
+  const [centerW, setCenterW] = useState(() => {
+    if (typeof window === "undefined") return 620;
+    return Number(localStorage.getItem("studio:centerW") ?? 620);
+  });
+  const [leftOpen, setLeftOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("studio:leftOpen") !== "false";
+  });
+  const [centerOpen, setCenterOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("studio:centerOpen") !== "false";
+  });
   const [isDragging, setIsDragging] = useState(false);
+
+  // Persist panel state on every change
+  useEffect(() => { localStorage.setItem("studio:leftW",      String(leftW));      }, [leftW]);
+  useEffect(() => { localStorage.setItem("studio:centerW",    String(centerW));    }, [centerW]);
+  useEffect(() => { localStorage.setItem("studio:leftOpen",   String(leftOpen));   }, [leftOpen]);
+  useEffect(() => { localStorage.setItem("studio:centerOpen", String(centerOpen)); }, [centerOpen]);
 
   // Browser panel state
   const [inputUrl,       setInputUrl]       = useState("");
@@ -199,12 +217,9 @@ export default function StudioPage() {
         </PanelShell>
       </div>
 
-      {!leftOpen && (
-        <RestoreTab label="Chat" onClick={() => setLeftOpen(true)} side="left" />
-      )}
-      {!centerOpen && (
-        <RestoreTab label="Browser" onClick={() => setCenterOpen(true)} side="center" />
-      )}
+      {/* Restore tabs — always rendered, only visible when panel is collapsed */}
+      <RestoreTab label="Chat"    onClick={() => setLeftOpen(true)}   visible={!leftOpen}   position={8} />
+      <RestoreTab label="Browser" onClick={() => setCenterOpen(true)} visible={!centerOpen} position={52} />
     </div>
   );
 }
@@ -327,24 +342,43 @@ function ResizeHandle({ onPointerDown, active }: {
 }
 
 // ── RestoreTab ─────────────────────────────────────────────────────────────────
+// Always in the DOM. Slides in from left edge when panel is collapsed.
+// `position` = top offset in px so Chat and Browser tabs never overlap.
 
-function RestoreTab({ label, onClick, side }: {
-  label: string; onClick: () => void; side: "left" | "center";
+function RestoreTab({ label, onClick, visible, position }: {
+  label: string; onClick: () => void; visible: boolean; position: number;
 }) {
   return (
-    <button onClick={onClick} style={{
-      position: "fixed",
-      left: side === "left" ? 0 : 40,
-      top: "50%",
-      transform: "translateY(-50%) rotate(-90deg)",
-      transformOrigin: "center",
-      background: "#16161f",
-      border: "1px solid rgba(255,255,255,0.08)",
-      color: "rgba(255,255,255,0.5)",
-      fontSize: 10, fontWeight: 600,
-      padding: "4px 10px", borderRadius: "0 0 6px 6px",
-      cursor: "pointer", zIndex: 20,
-      textTransform: "uppercase", letterSpacing: "0.08em",
-    }}>{label}</button>
+    <button
+      onClick={onClick}
+      title={`Restore ${label} panel`}
+      style={{
+        position: "fixed",
+        left: 0,
+        top: position,
+        zIndex: 200,
+        // Slide in from left when visible
+        transform: visible ? "translateX(0)" : "translateX(-100%)",
+        opacity: visible ? 1 : 0,
+        pointerEvents: visible ? "auto" : "none",
+        transition: "transform 180ms cubic-bezier(.4,0,.2,1), opacity 180ms ease",
+        // Styling
+        display: "flex", alignItems: "center", gap: 6,
+        height: 32, padding: "0 12px 0 10px",
+        background: "#1a1a2e",
+        border: "1px solid rgba(255,255,255,0.1)",
+        borderLeft: "none",
+        borderRadius: "0 8px 8px 0",
+        color: "rgba(255,255,255,0.6)",
+        fontSize: 11, fontWeight: 600,
+        cursor: "pointer",
+        textTransform: "uppercase", letterSpacing: "0.08em",
+        boxShadow: "2px 0 12px rgba(0,0,0,0.4)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ fontSize: 9, opacity: 0.5 }}>▶</span>
+      {label}
+    </button>
   );
 }
