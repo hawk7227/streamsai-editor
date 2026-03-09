@@ -132,11 +132,6 @@ export default function VisualEditorPro() {
     { role: "assistant", content: "I'm Claude, integrated into EditorPro. I can help you with code, design, debugging. Ask me anything about your project." }
   ]);
   const [chatLoading, setChatLoading] = useState(false);
-  const [claudeKey, setClaudeKey] = useState("");
-
-  // Persist Claude key
-  useEffect(() => { try { const k = localStorage.getItem("ep-claude-key"); if (k) setClaudeKey(k); } catch {} }, []);
-  useEffect(() => { if (claudeKey) try { localStorage.setItem("ep-claude-key", claudeKey); } catch {} }, [claudeKey]);
 
   const sendChat = async () => {
     if (!chatInput.trim()) return;
@@ -145,25 +140,39 @@ export default function VisualEditorPro() {
     setChatInput("");
     setChatLoading(true);
     try {
-      // Use Anthropic API if key available, otherwise show message
-      if (!claudeKey) {
-        setChatMessages(prev => [...prev, { role: "assistant", content: "Add your Anthropic API key in the GitHub panel settings to enable Claude chat." }]);
-        setChatLoading(false);
-        return;
-      }
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
+      const r = await fetch("/api/chat/stream", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": claudeKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 2000,
-          messages: [...chatMessages.filter(m => m.role !== "assistant" || chatMessages.indexOf(m) > 0).map(m => ({ role: m.role, content: m.content })), { role: "user", content: chatInput }],
-          system: "You are a design and code assistant integrated into EditorPro, a visual page editor. Help with CSS, colors, layout, React/Next.js code, and design decisions. Be concise."
-        })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          threadId: "editor-chat",
+          messages: [...chatMessages, userMsg].map(m => ({ role: m.role, content: m.content })),
+        }),
       });
-      const data = await r.json();
-      const txt = data.content?.find((b: any) => b.type === "text")?.text || "No response";
-      setChatMessages(prev => [...prev, { role: "assistant", content: txt }]);
-    } catch (err: any) {
-      setChatMessages(prev => [...prev, { role: "assistant", content: "Error: " + err.message }]);
+      // Read SSE stream and collect full text
+      const reader = r.body?.getReader();
+      const decoder = new TextDecoder();
+      let full = "";
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          for (const line of chunk.split("\n")) {
+            if (line.startsWith("data: ")) {
+              try {
+                const d = JSON.parse(line.slice(6));
+                if (d.delta?.text) full += d.delta.text;
+                if (d.choices?.[0]?.delta?.content) full += d.choices[0].delta.content;
+              } catch { /* skip non-JSON lines */ }
+            }
+          }
+        }
+      }
+      setChatMessages(prev => [...prev, { role: "assistant", content: full || "No response." }]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setChatMessages(prev => [...prev, { role: "assistant", content: "Error: " + msg }]);
     }
     setChatLoading(false);
   }; // 0 = auto, >0 = manual
@@ -468,48 +477,19 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
     } catch { setGhFiles([]); }
     setGhLoading(false);
   };
-  // ═══ TSX → HTML conversion state ═══
-  const tsxToHtml = async (tsx: string, apiKey: string) => {
-    if (!apiKey) return null;
+  // ═══ TSX → HTML via server (no client key needed) ═══
+  const tsxToHtml = async (tsx: string): Promise<string | null> => {
     setConverting(true);
     try {
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
+      const r = await fetch("/api/editor", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 8000,
-          messages: [{
-            role: "user",
-            content: `Convert this React/Next.js TSX component to a single self-contained HTML snippet that visually matches the UI. Rules:
-- Output ONLY the inner HTML (no <!DOCTYPE>, no <html>, no <head>, no <body> tags)
-- Preserve ALL inline styles exactly as-is
-- Replace Tailwind classes with equivalent inline styles
-- Replace JSX expressions like {variable} with realistic placeholder values
-- Remove all event handlers, useState, imports, TypeScript types
-- Keep all text content, colors, spacing, and layout intact
-- Use only HTML elements and inline styles
-- Include <script src="https://cdn.tailwindcss.com"></script> at the top if Tailwind classes are present
-- The output must render correctly as static HTML
-
-TSX source:
-\`\`\`tsx
-${tsx.slice(0, 12000)}
-\`\`\`
-
-Respond with ONLY the HTML, no explanation, no markdown fences.`,
-          }],
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "tsx-to-html", tsx }),
       });
-      const data = await r.json();
-      const html = data.content?.find((b: any) => b.type === "text")?.text || "";
-      return html.replace(/```html|```/g, "").trim();
-    } catch { return null; }
+      if (!r.ok) { const e = await r.json(); console.error("tsx-to-html:", e.error); return null; }
+      const { html } = await r.json();
+      return html || null;
+    } catch (e) { console.error("tsx-to-html fetch:", e); return null; }
     finally { setConverting(false); }
   };
 
@@ -522,16 +502,14 @@ Respond with ONLY the HTML, no explanation, no markdown fences.`,
         const raw = atob(data.content.replace(/\n/g, ""));
         setCode(raw);
         setGhPath(path);
-        setLiveUrl(""); // clear live URL so blob preview renders
+        setLiveUrl("");
         setHtmlPreview(null);
         setPanel(null);
-        // If Claude key available, convert TSX → HTML for visual editing
-        if (claudeKey) {
-          const html = await tsxToHtml(raw, claudeKey);
-          if (html) setHtmlPreview(html);
-        } else {
-          // No Claude key — show prompt to add key
-          setPanel("github");
+        // Convert TSX → HTML via server (no client key needed)
+        const html = await tsxToHtml(raw);
+        if (html) {
+          setHtmlPreview(html);
+          setInspectMode(true); // auto-enter inspect mode ready to click
         }
       }
     } catch { /* ignore */ }
@@ -616,65 +594,36 @@ Respond with ONLY the HTML, no explanation, no markdown fences.`,
     return w;
   }, [did]);
 
-  // ═══ WRITE-BACK: DOM changes → TSX source via Claude ═══
+  // ═══ WRITE-BACK: DOM changes → TSX source via server ═══
   const writeBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingChanges = useRef<{prop: string; value: string; elText: string}[]>([]);
 
   const writeBackToTsx = useCallback(async (changes: {prop: string; value: string; elText: string}[]) => {
-    if (!claudeKey || !ghPath || !code) return;
+    if (!ghPath || !code) return;
     try {
-      const changeDesc = changes.map(c => `- Set ${c.prop} to "${c.value}" on element containing text: "${c.elText}"`).join("\n");
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
+      const r = await fetch("/api/editor", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": claudeKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 8000,
-          messages: [{
-            role: "user",
-            content: `Apply these visual edits to the TSX source. Only modify the style/className values, nothing else. Return the complete updated TSX file:
-
-Changes to apply:
-${changeDesc}
-
-TSX source:
-\`\`\`tsx
-${code}
-\`\`\`
-
-Return ONLY the updated TSX file content, no explanation, no markdown fences.`,
-          }],
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "write-back", tsx: code, changes }),
       });
-      const data = await r.json();
-      const updated = data.content?.find((b: any) => b.type === "text")?.text || "";
-      if (updated && updated.includes("use client")) {
-        setCode(updated.replace(/```tsx?|```/g, "").trim());
-        setSaveStatus("saved");
-      }
-    } catch { /* silent */ }
-  }, [claudeKey, ghPath, code]);
+      if (!r.ok) { const e = await r.json(); console.error("write-back:", e.error); return; }
+      const { tsx: updated } = await r.json();
+      if (updated) { setCode(updated); setSaveStatus("saved"); }
+    } catch (e) { console.error("write-back fetch:", e); }
+  }, [ghPath, code]);
 
   // ═══ APPLY STYLE — sends to iframe + updates sel state + queues write-back ═══
   const applyStyle = useCallback((prop: string, value: string) => {
     let elText = "";
     setSel((prev: any) => {
       elText = prev?.txt || "";
-      if (prev?._el) {
-        try { prev._el.style[prop] = value; } catch { /* ignore */ }
-      }
+      if (prev?._el) { try { prev._el.style[prop] = value; } catch { /* ignore */ } }
       return prev ? { ...prev, sty: { ...prev.sty, [prop]: value } } : prev;
     });
     if (iframeRef.current?.contentWindow) {
       try { iframeRef.current.contentWindow.postMessage({ type: "applyStyle", prop, value }, "*"); } catch { /* ignore */ }
     }
-    // Queue write-back to TSX source
-    if (ghPath && claudeKey) {
+    if (ghPath) {
       pendingChanges.current.push({ prop, value, elText });
       setSaveStatus("saving");
       if (writeBackTimer.current) clearTimeout(writeBackTimer.current);
@@ -684,20 +633,17 @@ Return ONLY the updated TSX file content, no explanation, no markdown fences.`,
         writeBackToTsx(changes);
       }, 1500);
     }
-  }, [ghPath, claudeKey, writeBackToTsx]);
+  }, [ghPath, writeBackToTsx]);
 
   const applyText = useCallback((value: string) => {
     setSel((prev: any) => {
-      if (prev?._el) {
-        try { prev._el.innerText = value; } catch { /* ignore */ }
-      }
+      if (prev?._el) { try { prev._el.innerText = value; } catch { /* ignore */ } }
       return prev ? { ...prev, txt: value } : prev;
     });
     if (iframeRef.current?.contentWindow) {
       try { iframeRef.current.contentWindow.postMessage({ type: "setText", value }, "*"); } catch { /* ignore */ }
     }
-    // Queue write-back
-    if (ghPath && claudeKey) {
+    if (ghPath) {
       pendingChanges.current.push({ prop: "__text__", value, elText: value });
       setSaveStatus("saving");
       if (writeBackTimer.current) clearTimeout(writeBackTimer.current);
@@ -707,7 +653,8 @@ Return ONLY the updated TSX file content, no explanation, no markdown fences.`,
         writeBackToTsx(changes);
       }, 1500);
     }
-  }, [ghPath, claudeKey, writeBackToTsx]);
+  }, [ghPath, writeBackToTsx]);
+
 
   // ═══ STYLE GROUPS for inspector ═══
   const styleGroups = useMemo(() => {
@@ -1175,7 +1122,6 @@ Return ONLY the updated TSX file content, no explanation, no markdown fences.`,
               {/* GITHUB — with file browser */}
               {panel === "github" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <GhInp label="GitHub Token (saved)" type="password" value={ghToken} onChange={e => setGhToken(e.target.value)} ph="ghp_..." />
-                <GhInp label="Claude API Key (for chat)" type="password" value={claudeKey} onChange={e => setClaudeKey(e.target.value)} ph="sk-ant-..." />
                 {/* Repo dropdown */}
                 <label style={{ fontSize: 9, color: "#6b7280" }}>Repo
                   <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
@@ -1218,9 +1164,7 @@ Return ONLY the updated TSX file content, no explanation, no markdown fences.`,
                 </div>
                 <div style={{ display: "flex", gap: 4 }}>
                   <button onClick={() => ghBrowse(ghBrowsePath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#1f2937", color: "#e5e7eb", fontWeight: 600, fontSize: 10, border: "1px solid #374151", cursor: "pointer" }}>Browse</button>
-                  <button onClick={() => ghLoadFile(ghPath)} title={!claudeKey ? "Add Claude API Key above to enable visual editing" : "Pull file for visual editing"} style={{ flex: 1, padding: "7px", borderRadius: 5, background: claudeKey ? "#2dd4a0" : "#374151", color: claudeKey ? "#000" : "#9ca3af", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>
-                    {claudeKey ? "Pull ✦" : "Pull (needs key)"}
-                  </button>
+                  <button onClick={() => ghLoadFile(ghPath)} title="Pull file for visual editing" style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Pull ✦</button>
                   <button onClick={push} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#f97316", color: "#fff", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Push</button>
                 </div>
                 <button onClick={download} style={{ padding: "7px", borderRadius: 5, background: "#1a1b1e", color: "#e5e7eb", fontSize: 10, border: "1px solid #1f2937", cursor: "pointer" }}>Download</button>
