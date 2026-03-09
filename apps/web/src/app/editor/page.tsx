@@ -102,8 +102,8 @@ export default function VisualEditorPro() {
   const [swatches, setSwatches] = useState<string[]>([]);
   const [activeSwatch, setActiveSwatch] = useState<string | null>(null);
   const [pushSt, setPushSt] = useState<string | null>(null);
-  const [liveUrl, setLiveUrl] = useState("https://patient.medazonhealth.com/express-checkout");
-  const [lastLiveUrl, setLastLiveUrl] = useState("https://patient.medazonhealth.com/express-checkout");
+  const [liveUrl, setLiveUrl] = useState(""); // empty = blob mode; set to URL for live preview
+  const [lastLiveUrl, setLastLiveUrl] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const [ghFiles, setGhFiles] = useState<any[]>([]);
   const [ghLoading, setGhLoading] = useState(false);
@@ -752,8 +752,8 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
         <button onClick={() => {
           const next = !inspectMode;
           setInspectMode(next);
-          // If enabling inspect mode while a live URL is loaded, open GitHub panel
-          if (next && liveUrl) {
+          // Only prompt GitHub if in live URL mode with no blob preview
+          if (next && liveUrl && !htmlPreview) {
             setPanel("github");
           }
         }} style={{ height: 28, padding: "0 10px", borderRadius: 5, background: inspectMode ? "#f97316" : "#1a1b1e", border: inspectMode ? "1px solid #f97316" : "1px solid #1f2937", color: inspectMode ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
@@ -789,8 +789,9 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
       {/* ═══ INFO BAR ═══ */}
       <div style={{ flexShrink: 0, height: 24, background: "#08090a", borderBottom: "1px solid #111318", display: "flex", alignItems: "center", padding: "0 12px", gap: 10, fontSize: 9, color: "#4b5563" }}>
         <span style={{ fontWeight: 700, color: inspectMode ? "#f97316" : "#2dd4a0" }}>{inspectMode ? "INSPECT" : "BROWSE"}</span>
-        {liveUrl && <span style={{ color: "#2dd4a0", fontWeight: 600 }}>LIVE</span>}
-        {inspectMode && liveUrl && <span style={{ color: "#f97316", fontWeight: 700, fontSize: 8 }}>⚠ CROSS-ORIGIN — Pull file to edit</span>}
+        {htmlPreview && <span style={{ color: "#2dd4a0", fontWeight: 600, fontSize: 8 }}>✓ BLOB</span>}
+        {liveUrl && !htmlPreview && <span style={{ color: "#f59e0b", fontWeight: 600 }}>LIVE</span>}
+        {inspectMode && liveUrl && !htmlPreview && <span style={{ color: "#f97316", fontWeight: 700, fontSize: 8 }}>⚠ CROSS-ORIGIN — Pull file to edit</span>}
         <span style={{ fontWeight: 600, color: "#9ca3af" }}>{dev.n}</span>
         <span>{dev.w}x{dev.h}</span>
         <span>Vis:{visH}px</span>
@@ -1167,39 +1168,30 @@ window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
                 </label>
                 <GhInp label="Branch" value={ghBranch} onChange={e => setGhBranch(e.target.value)} />
                 {/* File dropdown */}
-                <label style={{ fontSize: 9, color: "#6b7280" }}>File (loads into Code editor)
-                  <select value={ghPath} onChange={e => { setGhPath(e.target.value); if (e.target.value) ghLoadFile(e.target.value); }} style={{ display: "block", width: "100%", marginTop: 2, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 10, outline: "none" }}>
+                <label style={{ fontSize: 9, color: "#6b7280" }}>File
+                  <select value={ghPath} onChange={e => setGhPath(e.target.value)} style={{ display: "block", width: "100%", marginTop: 2, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 10, outline: "none" }}>
                     <option value="">Select file...</option>
                     {ghFileList.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </label>
-                {/* Preview URL — independent of code editor */}
-                <div style={{ borderTop: "1px solid #1f2937", paddingTop: 8, marginTop: 2 }}>
-                  <div style={{ fontSize: 9, color: "#4b5563", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Visual Preview URL</div>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <input
-                      value={liveUrl}
-                      onChange={e => setLiveUrl(e.target.value)}
-                      placeholder="https://patient.medazonhealth.com/..."
-                      onKeyDown={e => e.key === "Enter" && setPanel(null)}
-                      style={{ flex: 1, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 9, fontFamily: "monospace", outline: "none" }}
-                    />
-                    {liveUrl && <button onClick={() => setLiveUrl("")} title="Clear URL" style={{ padding: "0 8px", borderRadius: 4, background: "#1f2937", border: "1px solid #374151", color: "#f87171", fontSize: 11, cursor: "pointer" }}>✕</button>}
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 4 }}>
-                    {["patient.medazonhealth.com/express-checkout", "patient.medazonhealth.com", "doctor.medazonhealth.com"].map(u =>
-                      <button key={u} onClick={() => setLiveUrl("https://" + u)} style={{ background: liveUrl === "https://" + u ? "#1f2937" : "none", border: liveUrl === "https://" + u ? "1px solid #374151" : "none", color: "#2dd4a0", cursor: "pointer", fontSize: 8, padding: "2px 5px", borderRadius: 3 }}>{u.split(".com")[1] || "/"}</button>
-                    )}
-                  </div>
-                  <p style={{ fontSize: 8, color: "#374151", marginTop: 4, lineHeight: 1.5 }}>
-                    Preview URL is independent of the code editor.<br />Code → Monaco. Visual → iframe.
-                  </p>
+                {/* Mode indicator */}
+                <div style={{ padding: "6px 8px", borderRadius: 4, background: htmlPreview ? "rgba(45,212,160,0.08)" : "rgba(249,115,22,0.08)", border: `1px solid ${htmlPreview ? "rgba(45,212,160,0.2)" : "rgba(249,115,22,0.2)"}`, fontSize: 9, color: htmlPreview ? "#2dd4a0" : "#f97316" }}>
+                  {htmlPreview ? "✓ Visual preview ready — click elements to edit" : liveUrl ? "⚠ Live URL mode — Pull a file to enable editing" : "↑ Pull a file to load visual preview"}
                 </div>
                 <div style={{ display: "flex", gap: 4 }}>
                   <button onClick={() => ghBrowse(ghBrowsePath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#1f2937", color: "#e5e7eb", fontWeight: 600, fontSize: 10, border: "1px solid #374151", cursor: "pointer" }}>Browse</button>
-                  <button onClick={() => ghLoadFile(ghPath)} title="Pull file for visual editing" style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Pull ✦</button>
-                  <button onClick={push} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#f97316", color: "#fff", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Push</button>
+                  <button onClick={() => { if (ghPath) ghLoadFile(ghPath); }} disabled={!ghPath || ghLoading} title="Pull file → convert to visual preview → click to edit" style={{ flex: 1, padding: "7px", borderRadius: 5, background: (!ghPath || ghLoading) ? "#374151" : "#2dd4a0", color: (!ghPath || ghLoading) ? "#9ca3af" : "#000", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>
+                    {ghLoading ? "Loading..." : "Pull ✦"}
+                  </button>
+                  <button onClick={push} disabled={!ghPath} style={{ flex: 1, padding: "7px", borderRadius: 5, background: !ghPath ? "#374151" : "#f97316", color: !ghPath ? "#9ca3af" : "#fff", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Push</button>
                 </div>
+                {/* Live URL for browse-only mode (optional, does not affect editing) */}
+                {liveUrl && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937" }}>
+                    <span style={{ fontSize: 8, color: "#6b7280", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>LIVE: {liveUrl}</span>
+                    <button onClick={() => setLiveUrl("")} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 10, flexShrink: 0 }}>✕ clear</button>
+                  </div>
+                )}
                 <button onClick={download} style={{ padding: "7px", borderRadius: 5, background: "#1a1b1e", color: "#e5e7eb", fontSize: 10, border: "1px solid #1f2937", cursor: "pointer" }}>Download</button>
                 {pushSt && <span style={{ fontSize: 10, color: pushSt.includes("✗") ? "#f87171" : "#2dd4a0" }}>{pushSt}</span>}
                 {ghLoading && <p style={{ fontSize: 10, color: "#6b7280" }}>Loading...</p>}
