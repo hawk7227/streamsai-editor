@@ -231,22 +231,17 @@ export default function EditorPro() {
       if (!d.content) throw new Error("No content from GitHub");
       setTsxSrc(atob(d.content.replace(/\n/g, "")));
 
-      // 2. Derive live URL — load via /api/proxy (SW intercepts + injects bridge)
+      // 2. Load live URL directly in iframe — bridge script in patientpanel layout handles postMessage
       const liveUrl = KNOWN[ghPath];
       if (!liveUrl) {
         throw new Error(`No live URL mapped for ${ghPath}. Add it to KNOWN in editor source.`);
       }
 
-      // Wait for SW to be ready before setting URL
-      if ('serviceWorker' in navigator) {
-        await navigator.serviceWorker.ready;
-      }
-
-      setProxyUrl(`/api/proxy?url=${encodeURIComponent(liveUrl)}`);
+      setProxyUrl(liveUrl); // direct URL — no proxy needed
       setInspect(true);
       setRightPanel("props");
-      // Loading clears in iframe onLoad handler. Add timeout fallback.
-      setTimeout(() => setLoading(false), 15000);
+      // Loading clears on iframe onLoad or ep-ready message. Timeout fallback.
+      setTimeout(() => setLoading(false), 20000);
     } catch (e) {
       alert("Pull failed: " + (e instanceof Error ? e.message : e));
       setLoading(false);
@@ -330,21 +325,21 @@ export default function EditorPro() {
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
+      if (e.data?.type === "ep-ready") {
+        setLoading(false); // bridge confirmed active in iframe
+      }
       if (e.data?.type === "ep-sel") {
         setSel(e.data as SelState);
         setRightPanel("props");
-        // collect colors from selection
         const { sty } = e.data as SelState;
         setSwatches(prev => {
           const set = new Set(prev);
-          [sty.color, sty.backgroundColor].forEach(c => {
-            const h = hex(c); if (h) set.add(h);
-          });
-          return Array.from(set).slice(0, 32);
+          [sty.color, sty.backgroundColor].forEach(c => { const h = hex(c); if (h) set.add(h); });
+          return Array.from(set).slice(0, 48);
         });
       }
       if (e.data?.type === "ep-colors") {
-        setSwatches((e.data.colors as string[]).slice(0, 32));
+        setSwatches((e.data.colors as string[]).slice(0, 48));
       }
     };
     window.addEventListener("message", handler);
@@ -377,7 +372,7 @@ export default function EditorPro() {
   useEffect(() => {
     const frame = iframeRef.current; if (!frame) return;
     if (proxyUrl) {
-      frame.src = proxyUrl; // full /api/proxy?url=... path, SW intercepts and injects bridge
+      frame.src = proxyUrl; // direct live URL — bridge in patientpanel layout handles postMessage
     } else {
       frame.src = "about:blank";
     }
@@ -406,77 +401,37 @@ export default function EditorPro() {
     [queueWB]
   );
 
-  // ── Click on overlay → hit-test inside iframe ─────────────────────────────
-  const handleOverlayClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / scale;
-      const y = (e.clientY - rect.top) / scale;
-      try {
-        const doc = iframeRef.current?.contentDocument;
-        if (!doc) return;
-        // Clear previous selection
-        doc.querySelectorAll("[data-ep-sel]").forEach((n) => {
-          (n as HTMLElement).style.outline = ""; n.removeAttribute("data-ep-sel");
-        });
-        const el = doc.elementFromPoint(x, y) as HTMLElement | null;
-        if (!el) return;
-        el.style.outline = "2px solid #f97316";
-        el.setAttribute("data-ep-sel", "1");
-        const cs = getComputedStyle(el), r = el.getBoundingClientRect();
-        const sty: Record<string, string> = {};
-        PROP_GROUPS.flatMap(g => g.props).forEach(({ k }) => {
-          sty[k] = (cs as unknown as Record<string, string>)[k] || "";
-        });
-        const snap: SelState = {
-          tag: el.tagName.toLowerCase(),
-          txt: (el.textContent || "").slice(0, 200),
-          rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
-          sty,
-        };
-        setSel(snap);
-        setRightPanel("props");
-        setSwatches(prev => {
-          const set = new Set(prev);
-          [cs.color, cs.backgroundColor].forEach(c => { const h = hex(c); if (h) set.add(h); });
-          return Array.from(set).slice(0, 32);
-        });
-      } catch {
-        // Cross-origin block — script in page handles it via postMessage
+  // ── Overlay handlers — no-ops: bridge in target page handles inspection via postMessage ──
+  const handleOverlayClick = useCallback((_e: React.MouseEvent<HTMLDivElement>) => {}, []);
+  const handleOverlayMove  = useCallback((_e: React.MouseEvent<HTMLDivElement>) => {}, []);
+  const handleOverlayLeave = useCallback(() => {}, []);
+
+  // Window-level drag handler for selection handle resize/move (postMessage to cross-origin iframe)
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      const dx = (e.clientX - dragRef.current.startX) / scale;
+      const dy = (e.clientY - dragRef.current.startY) / scale;
+      const iw = iframeRef.current?.contentWindow;
+      if (!iw) return;
+      if (dragRef.current.mode === "move") {
+        iw.postMessage({ type: "ep-style", prop: "position", value: "relative" }, "*");
+        iw.postMessage({ type: "ep-style", prop: "left", value: (dragRef.current.origLeft + dx) + "px" }, "*");
+        iw.postMessage({ type: "ep-style", prop: "top",  value: (dragRef.current.origTop  + dy) + "px" }, "*");
+      } else if (dragRef.current.mode === "resize-br") {
+        iw.postMessage({ type: "ep-style", prop: "width",  value: Math.max(20, dragRef.current.origW + dx) + "px" }, "*");
+        iw.postMessage({ type: "ep-style", prop: "height", value: Math.max(10, dragRef.current.origH + dy) + "px" }, "*");
+      } else if (dragRef.current.mode === "resize-r") {
+        iw.postMessage({ type: "ep-style", prop: "width", value: Math.max(20, dragRef.current.origW + dx) + "px" }, "*");
+      } else if (dragRef.current.mode === "resize-b") {
+        iw.postMessage({ type: "ep-style", prop: "height", value: Math.max(10, dragRef.current.origH + dy) + "px" }, "*");
       }
-    },
-    [scale]
-  );
-
-  const handleOverlayMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / scale;
-      const y = (e.clientY - rect.top) / scale;
-      try {
-        const doc = iframeRef.current?.contentDocument; if (!doc) return;
-        doc.querySelectorAll("[data-ep-hov]").forEach((n) => {
-          if (!n.getAttribute("data-ep-sel")) (n as HTMLElement).style.outline = "";
-          n.removeAttribute("data-ep-hov");
-        });
-        const el = doc.elementFromPoint(x, y) as HTMLElement | null;
-        if (el && !el.getAttribute("data-ep-sel")) {
-          el.style.outline = "2px solid rgba(249,115,22,0.4)";
-          el.setAttribute("data-ep-hov", "1");
-        }
-      } catch {}
-    },
-    [scale]
-  );
-
-  const handleOverlayLeave = useCallback(() => {
-    try {
-      iframeRef.current?.contentDocument?.querySelectorAll("[data-ep-hov]").forEach((n) => {
-        if (!n.getAttribute("data-ep-sel")) (n as HTMLElement).style.outline = "";
-        n.removeAttribute("data-ep-hov");
-      });
-    } catch {}
-  }, []);
+    };
+    const onUp = () => { dragRef.current = null; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [scale]);
 
   // ── Filtered style groups ─────────────────────────────────────────────────
   const filteredGroups = useMemo(() => {
@@ -608,41 +563,13 @@ export default function EditorPro() {
                     ref={iframeRef}
                     title="EditorPro Preview"
                     sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-                    style={{ width: dev.w, height: visH, border: "none", display: "block", pointerEvents: inspect ? "none" : "auto" }}
+                    style={{ width: dev.w, height: visH, border: "none", display: "block", pointerEvents: "auto" }}
                   />
                   {/* Inspect overlay + selection handles */}
                   {inspect && (
                     <div
-                      style={{ position: "absolute", inset: 0, cursor: sel ? "default" : "crosshair", zIndex: 5 }}
-                      onClick={e => { if (!dragRef.current) handleOverlayClick(e); }}
-                      onMouseMove={e => {
-                        if (dragRef.current) {
-                          // Handle drag/resize
-                          const dx = (e.clientX - dragRef.current.startX) / scale;
-                          const dy = (e.clientY - dragRef.current.startY) / scale;
-                          try {
-                            const el = iframeRef.current?.contentDocument?.querySelector('[data-ep-sel="1"]') as HTMLElement | null;
-                            if (!el) return;
-                            if (dragRef.current.mode === "move") {
-                              el.style.position = "relative";
-                              el.style.left = (dragRef.current.origLeft + dx) + "px";
-                              el.style.top  = (dragRef.current.origTop  + dy) + "px";
-                              setSel(p => p ? { ...p, sty: { ...p.sty, left: el.style.left, top: el.style.top } } : p);
-                            } else if (dragRef.current.mode === "resize-br") {
-                              el.style.width  = Math.max(20, dragRef.current.origW + dx) + "px";
-                              el.style.height = Math.max(10, dragRef.current.origH + dy) + "px";
-                            } else if (dragRef.current.mode === "resize-r") {
-                              el.style.width = Math.max(20, dragRef.current.origW + dx) + "px";
-                            } else if (dragRef.current.mode === "resize-b") {
-                              el.style.height = Math.max(10, dragRef.current.origH + dy) + "px";
-                            }
-                          } catch {}
-                        } else {
-                          handleOverlayMove(e);
-                        }
-                      }}
-                      onMouseUp={() => { dragRef.current = null; }}
-                      onMouseLeave={() => { dragRef.current = null; handleOverlayLeave(); }}
+                      style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 5 }}
+
                     >
                       {/* Selection handles — rendered on top of selected element */}
                       {sel && (() => {
@@ -658,13 +585,8 @@ export default function EditorPro() {
                               style={{ position: "absolute", top: -12, left: "50%", transform: "translateX(-50%)", width: 40, height: 12, background: "#f97316", borderRadius: "3px 3px 0 0", cursor: "move", pointerEvents: "all", display: "flex", alignItems: "center", justifyContent: "center" }}
                               onMouseDown={e => {
                                 e.stopPropagation();
-                                try {
-                                  const el = iframeRef.current?.contentDocument?.querySelector('[data-ep-sel="1"]') as HTMLElement | null;
-                                  if (!el) return;
-                                  const cs = getComputedStyle(el);
-                                  dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origW: parseFloat(cs.width) || 0, origH: parseFloat(cs.height) || 0, origLeft: parseFloat(el.style.left) || 0, origTop: parseFloat(el.style.top) || 0 };
-                                } catch {}
-                              }}
+                                if (!sel) return;
+                                dragRef.current = { mode: "move", startX: e.clientX, startY: e.clientY, origW: parseFloat(sel.sty.width) || sel.rect.w, origH: parseFloat(sel.sty.height) || sel.rect.h, origLeft: parseFloat(sel.sty.left) || 0, origTop: parseFloat(sel.sty.top) || 0 };                              }}
                             >
                               <div style={{ width: 14, height: 2, borderRadius: 1, background: "rgba(0,0,0,0.5)" }} />
                             </div>
@@ -674,12 +596,8 @@ export default function EditorPro() {
                               style={{ position: "absolute", bottom: -5, right: -5, width: 10, height: 10, background: "#f97316", borderRadius: 2, cursor: "se-resize", pointerEvents: "all" }}
                               onMouseDown={e => {
                                 e.stopPropagation();
-                                try {
-                                  const el = iframeRef.current?.contentDocument?.querySelector('[data-ep-sel="1"]') as HTMLElement | null;
-                                  if (!el) return;
-                                  const cs = getComputedStyle(el);
-                                  dragRef.current = { mode: "resize-br", startX: e.clientX, startY: e.clientY, origW: parseFloat(cs.width) || 0, origH: parseFloat(cs.height) || 0, origLeft: 0, origTop: 0 };
-                                } catch {}
+                                if (!sel) return;
+                                dragRef.current = { mode: "resize-br", startX: e.clientX, startY: e.clientY, origW: parseFloat(sel.sty.width) || sel.rect.w, origH: parseFloat(sel.sty.height) || sel.rect.h, origLeft: 0, origTop: 0 };
                               }}
                             />
                             {/* Resize right edge */}
@@ -688,11 +606,8 @@ export default function EditorPro() {
                               style={{ position: "absolute", top: "50%", right: -5, transform: "translateY(-50%)", width: 8, height: 20, background: "#f97316", borderRadius: 3, cursor: "e-resize", pointerEvents: "all" }}
                               onMouseDown={e => {
                                 e.stopPropagation();
-                                try {
-                                  const el = iframeRef.current?.contentDocument?.querySelector('[data-ep-sel="1"]') as HTMLElement | null;
-                                  if (!el) return;
-                                  dragRef.current = { mode: "resize-r", startX: e.clientX, startY: e.clientY, origW: parseFloat(getComputedStyle(el).width) || 0, origH: 0, origLeft: 0, origTop: 0 };
-                                } catch {}
+                                if (!sel) return;
+                                dragRef.current = { mode: "resize-r", startX: e.clientX, startY: e.clientY, origW: parseFloat(sel.sty.width) || sel.rect.w, origH: 0, origLeft: 0, origTop: 0 };
                               }}
                             />
                             {/* Resize bottom edge */}
@@ -701,11 +616,8 @@ export default function EditorPro() {
                               style={{ position: "absolute", bottom: -5, left: "50%", transform: "translateX(-50%)", width: 20, height: 8, background: "#f97316", borderRadius: 3, cursor: "s-resize", pointerEvents: "all" }}
                               onMouseDown={e => {
                                 e.stopPropagation();
-                                try {
-                                  const el = iframeRef.current?.contentDocument?.querySelector('[data-ep-sel="1"]') as HTMLElement | null;
-                                  if (!el) return;
-                                  dragRef.current = { mode: "resize-b", startX: e.clientX, startY: e.clientY, origW: 0, origH: parseFloat(getComputedStyle(el).height) || 0, origLeft: 0, origTop: 0 };
-                                } catch {}
+                                if (!sel) return;
+                                dragRef.current = { mode: "resize-b", startX: e.clientX, startY: e.clientY, origW: 0, origH: parseFloat(sel.sty.height) || sel.rect.h, origLeft: 0, origTop: 0 };
                               }}
                             />
                             {/* Label */}
