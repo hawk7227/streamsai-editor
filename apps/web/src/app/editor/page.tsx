@@ -1,1298 +1,783 @@
 "use client";
-
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 
-// ═══ DEVICE DATABASE ═══
-const D = {
-  "i17p":    {n:"iPhone 17 Pro",     w:402,h:874, st:62,sb:34,r:55,di:1,c:"ios"},
-  "i17pm":   {n:"iPhone 17 Pro Max", w:440,h:956, st:62,sb:34,r:55,di:1,c:"ios"},
-  "i16":     {n:"iPhone 16",         w:393,h:852, st:59,sb:34,r:55,di:1,c:"ios"},
-  "i16p":    {n:"iPhone 16 Plus",    w:430,h:932, st:59,sb:34,r:55,di:1,c:"ios"},
-  "i16pro":  {n:"iPhone 16 Pro",     w:402,h:874, st:62,sb:34,r:55,di:1,c:"ios"},
-  "i16pm":   {n:"iPhone 16 Pro Max", w:440,h:956, st:62,sb:34,r:55,di:1,c:"ios"},
-  "i15":     {n:"iPhone 15",         w:393,h:852, st:59,sb:34,r:55,di:1,c:"ios"},
-  "i15p":    {n:"iPhone 15 Pro",     w:393,h:852, st:59,sb:34,r:55,di:1,c:"ios"},
-  "i15pm":   {n:"iPhone 15 Pro Max", w:430,h:932, st:59,sb:34,r:55,di:1,c:"ios"},
-  "i14":     {n:"iPhone 14",         w:390,h:844, st:47,sb:34,r:47,di:0,c:"ios"},
-  "i14p":    {n:"iPhone 14 Pro",     w:393,h:852, st:59,sb:34,r:55,di:1,c:"ios"},
-  "ise":     {n:"iPhone SE",         w:375,h:667, st:20,sb:0, r:0, di:0,c:"ios"},
-  "px9":     {n:"Pixel 9",           w:412,h:915, st:24,sb:0, r:28,di:0,c:"and"},
-  "gs25":    {n:"Galaxy S25",        w:360,h:780, st:24,sb:0, r:24,di:0,c:"and"},
-  "gs25u":   {n:"Galaxy S25 Ultra",  w:384,h:824, st:24,sb:0, r:12,di:0,c:"and"},
-  "gs24":    {n:"Galaxy S24",        w:360,h:780, st:24,sb:0, r:24,di:0,c:"and"},
-  "ipad":    {n:"iPad Air 11\"",     w:820,h:1180,st:24,sb:20,r:18,di:0,c:"tab"},
-  "d1440":   {n:"Desktop 1440",      w:1440,h:900,st:0, sb:0, r:0, di:0,c:"desk"},
-  "d1920":   {n:"Desktop 1080p",     w:1920,h:1080,st:0,sb:0, r:0, di:0,c:"desk"},
+// ─── Device / Browser tables ──────────────────────────────────────────────────
+type Dev = { n: string; w: number; h: number; st: number; sb: number; r: number; c: "ios" | "and" | "tab" | "desk" };
+type Brw = { n: string; tc: number; bc: number };
+
+const DEVS: Record<string, Dev> = {
+  i15p:  { n: "iPhone 15 Pro",     w: 393, h: 852,  st: 59, sb: 34, r: 55, c: "ios" },
+  i16pro:{ n: "iPhone 16 Pro",     w: 402, h: 874,  st: 62, sb: 34, r: 55, c: "ios" },
+  i14:   { n: "iPhone 14",         w: 390, h: 844,  st: 47, sb: 34, r: 47, c: "ios" },
+  ise:   { n: "iPhone SE",         w: 375, h: 667,  st: 20, sb: 0,  r: 0,  c: "ios" },
+  px9:   { n: "Pixel 9",           w: 412, h: 915,  st: 24, sb: 0,  r: 28, c: "and" },
+  gs25:  { n: "Galaxy S25",        w: 360, h: 780,  st: 24, sb: 0,  r: 24, c: "and" },
+  ipad:  { n: "iPad Air 11\"",     w: 820, h: 1180, st: 24, sb: 20, r: 18, c: "tab" },
+  d1440: { n: "Desktop 1440",      w: 1440,h: 900,  st: 0,  sb: 0,  r: 0,  c: "desk"},
 };
-
-const B = {
-  "saf":  {n:"Safari (visible)",  tc:50,bc:44,p:"ios"},
-  "safc": {n:"Safari (collapsed)",tc:0, bc:0, p:"ios"},
-  "safb": {n:"Safari (bottom bar)",tc:0,bc:56,p:"ios"},
-  "pwa":  {n:"PWA / Standalone",  tc:0, bc:0, p:"ios"},
-  "chr":  {n:"Chrome (visible)",  tc:56,bc:48,p:"and"},
-  "chrc": {n:"Chrome (collapsed)",tc:0, bc:48,p:"and"},
-  "desk": {n:"Desktop Browser",   tc:0, bc:0, p:"desk"},
+const BROWS: Record<string, Brw> = {
+  saf:  { n: "Safari",          tc: 50, bc: 44 },
+  safc: { n: "Safari (hidden)", tc: 0,  bc: 0  },
+  safb: { n: "Safari (bottom)", tc: 0,  bc: 56 },
+  pwa:  { n: "PWA",             tc: 0,  bc: 0  },
+  chr:  { n: "Chrome",          tc: 56, bc: 48 },
+  desk: { n: "Desktop",         tc: 0,  bc: 0  },
 };
+const browsersFor = (d: Dev) =>
+  d.c === "ios" ? ["saf","safc","safb","pwa"] :
+  d.c === "and" ? ["chr"] : ["desk"];
 
-const bForD = (d: any) => d.c==="ios"?["saf","safc","safb","pwa"]:d.c==="and"?["chr","chrc"]:["desk"];
-
-const WARN = [
-  {s:"critical",t:"100vh Bug",d:"100vh ignores browser chrome. Content cut off on load.",f:"Use 100dvh or 100svh"},
-  {s:"high",t:"Dynamic Island",d:"126×37pt cutout at top center hides content.",f:"env(safe-area-inset-top) padding"},
-  {s:"high",t:"Home Indicator",d:"34px bottom zone. Don't put buttons here.",f:"env(safe-area-inset-bottom) padding"},
-  {s:"high",t:"Keyboard",d:"Opens ~260-300px. Fixed elements may overlap.",f:"scrollIntoView + visualViewport API"},
-  {s:"medium",t:"Safari Bottom Bar",d:"iOS 15+ option. 56px at bottom hides CTAs.",f:"Test both bar positions"},
-  {s:"medium",t:"Gesture Nav",d:"48px Android bottom bar conflicts with swipes.",f:"Avoid swipeable UI in bottom 48px"},
+// ─── Style property groups ────────────────────────────────────────────────────
+type PropDef = { k: string; label: string; type: "color" | "px" | "select" | "text"; opts?: string[] };
+const PROP_GROUPS: { g: string; props: PropDef[] }[] = [
+  { g: "Typography", props: [
+    { k: "color",         label: "Color",      type: "color" },
+    { k: "fontSize",      label: "Size",        type: "px" },
+    { k: "fontWeight",    label: "Weight",      type: "select", opts: ["100","200","300","400","500","600","700","800","900"] },
+    { k: "textAlign",     label: "Align",       type: "select", opts: ["left","center","right","justify"] },
+    { k: "lineHeight",    label: "Line H",      type: "text" },
+    { k: "letterSpacing", label: "Tracking",    type: "text" },
+    { k: "textTransform", label: "Transform",   type: "select", opts: ["none","uppercase","lowercase","capitalize"] },
+  ]},
+  { g: "Background", props: [
+    { k: "backgroundColor", label: "BG Color", type: "color" },
+    { k: "background",      label: "BG",       type: "text"  },
+    { k: "opacity",         label: "Opacity",  type: "text"  },
+  ]},
+  { g: "Spacing", props: [
+    { k: "paddingTop",    label: "Pad T",   type: "px" },
+    { k: "paddingBottom", label: "Pad B",   type: "px" },
+    { k: "paddingLeft",   label: "Pad L",   type: "px" },
+    { k: "paddingRight",  label: "Pad R",   type: "px" },
+    { k: "marginTop",     label: "Margin T",type: "px" },
+    { k: "marginBottom",  label: "Margin B",type: "px" },
+  ]},
+  { g: "Size", props: [
+    { k: "width",    label: "Width",   type: "text" },
+    { k: "height",   label: "Height",  type: "text" },
+    { k: "maxWidth", label: "Max W",   type: "text" },
+    { k: "minHeight",label: "Min H",   type: "text" },
+  ]},
+  { g: "Border", props: [
+    { k: "borderRadius", label: "Radius", type: "px" },
+    { k: "border",       label: "Border", type: "text" },
+    { k: "boxShadow",    label: "Shadow", type: "text" },
+  ]},
+  { g: "Layout", props: [
+    { k: "display",        label: "Display",  type: "select", opts: ["block","flex","grid","inline","inline-flex","none"] },
+    { k: "flexDirection",  label: "Direction",type: "select", opts: ["row","column","row-reverse","column-reverse"] },
+    { k: "justifyContent", label: "Justify",  type: "select", opts: ["flex-start","center","flex-end","space-between","space-around","space-evenly"] },
+    { k: "alignItems",     label: "Align",    type: "select", opts: ["flex-start","center","flex-end","stretch","baseline"] },
+    { k: "gap",            label: "Gap",      type: "px" },
+    { k: "position",       label: "Position", type: "select", opts: ["static","relative","absolute","fixed","sticky"] },
+  ]},
 ];
 
-const DEFAULT_CODE = `<div style="max-width:430px;margin:0 auto;height:100%;background:#0b0f0c;color:#fff;font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;overflow:hidden;">
-  <div style="flex-shrink:0;padding:max(var(--sat,8px),8px) 16px 6px;background:linear-gradient(180deg,#0b0f0c,rgba(11,15,12,0.97));">
-    <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:2px;">
-      <div style="width:24px;height:24px;background:rgba(45,212,160,0.2);border-radius:6px;display:flex;align-items:center;justify-content:center;">
-        <span style="color:#2dd4a0;font-size:12px;font-weight:900;">M</span>
-      </div>
-      <span style="font-weight:700;font-size:15px;letter-spacing:-0.02em;">Medazon <span style="color:#2dd4a0;">Health</span></span>
-    </div>
-    <p style="color:#2dd4a0;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;margin-bottom:2px;text-align:center;">Private · Discreet</p>
-    <h1 style="font-size:clamp(20px,5.5vw,26px);font-weight:900;text-align:center;margin-bottom:4px;">What Brings You In?</h1>
-    <div style="width:100%;height:6px;background:rgba(255,255,255,0.1);border-radius:99px;overflow:hidden;">
-      <div style="width:25%;height:100%;background:#f97316;border-radius:99px;"></div>
-    </div>
-  </div>
-  <div style="flex:1;overflow-y:auto;padding:8px 16px 16px;">
-    <div style="border:3px solid #f97316;border-radius:12px;padding:16px;box-shadow:0 0 20px rgba(249,115,22,0.5);margin-top:8px;">
-      <button style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:12px;border:2px solid rgba(45,212,160,0.4);background:#0d1218;color:#d1d5db;font-size:15px;cursor:pointer;">
-        Select a reason...
-        <span style="color:#6b7280;">▼</span>
-      </button>
-    </div>
-    <div style="margin-top:12px;padding:0 4px;">
-      <h2 style="font-size:clamp(38px,10vw,48px);font-weight:900;line-height:1.05;letter-spacing:-0.02em;">What's Going <span style="color:#2dd4a0;">On?</span></h2>
-      <p style="font-size:11px;color:#6b7280;margin-top:8px;">No judgment. No waiting rooms. Just private care.</p>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
-        <span style="font-size:8px;color:#6b7280;">🔒 HIPAA Encrypted</span>
-        <span style="font-size:8px;color:#6b7280;">👩‍⚕️ Board-Certified</span>
-        <span style="font-size:8px;color:#6b7280;">⭐ 4.9 · 10K+</span>
-        <span style="font-size:8px;color:#6b7280;">👤 Same Provider</span>
-      </div>
-    </div>
-  </div>
-  <div style="flex-shrink:0;padding:4px 16px;padding-bottom:max(var(--sab,4px),4px);">
-    <p style="text-align:center;color:#374151;font-size:8px;">🔒 HIPAA Compliant · Encrypted · Booking fee reserves your provider</p>
-  </div>
-</div>`;
+// URL → path mapping for known pages
+const KNOWN: Record<string, string> = {
+  "src/app/express-checkout/page.tsx": "https://patient.medazonhealth.com/express-checkout",
+  "src/app/page.tsx":                  "https://patient.medazonhealth.com",
+};
 
-export default function VisualEditorPro() {
-  const [code, setCode] = useState(DEFAULT_CODE);
+function hex(rgb: string): string {
+  if (!rgb || rgb === "transparent" || rgb.includes("0, 0, 0, 0")) return "";
+  const m = rgb.match(/\d+/g);
+  if (!m || m.length < 3) return "";
+  return "#" + m.slice(0, 3).map((n) => parseInt(n).toString(16).padStart(2, "0")).join("");
+}
+
+type SelState = {
+  tag: string;
+  txt: string;
+  rect: { x: number; y: number; w: number; h: number };
+  sty: Record<string, string>;
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
+export default function EditorPro() {
+  // Device + browser
   const [did, setDid] = useState("i15p");
   const [bid, setBid] = useState("saf");
-  const [zones, setZones] = useState(false);
-  const [measures, setMeasures] = useState(true);
-  const [sel, setSel] = useState<any>(null);
-  const [panel, setPanel] = useState<string | null>(null);
-  const [imgResult, setImgResult] = useState<any>(null);
-  const [imgAnalyzing, setImgAnalyzing] = useState(false);
-  const [saveStatus, setSaveStatus] = useState("saved");
-  const [ghToken, setGhToken] = useState("");
-  const [ghRepo, setGhRepo] = useState("hawk7227/patientpanel");
-  const [ghBranch, setGhBranch] = useState("master");
-  const [ghPath, setGhPath] = useState("src/app/express-checkout/page.tsx");
-  const [inspectMode, setInspectMode] = useState(false);
-  const [swatches, setSwatches] = useState<string[]>([]);
-  const [activeSwatch, setActiveSwatch] = useState<string | null>(null);
-  const [pushSt, setPushSt] = useState<string | null>(null);
-  const [liveUrl, setLiveUrl] = useState(""); // empty = blob mode; set to URL for live preview
-  const [lastLiveUrl, setLastLiveUrl] = useState("");
-  const [urlInput, setUrlInput] = useState("");
-  const [ghFiles, setGhFiles] = useState<any[]>([]);
-  const [ghLoading, setGhLoading] = useState(false);
-  const [ghBrowsePath, setGhBrowsePath] = useState("");
-  const [ghRepos, setGhRepos] = useState<any[]>([]);
-  const [ghFileList, setGhFileList] = useState<string[]>([]);
-  const [zoom, setZoom] = useState(0);
-  // Frame 2 state
-  const [f2Open, setF2Open] = useState(false);
-  const [f2Url, setF2Url] = useState("");
-  const [f2Code, setF2Code] = useState("");
-  const [f2Did, setF2Did] = useState("i15p");
-  const [f2Mode, setF2Mode] = useState<"url" | "gen" | "upload">("url");
-  // DALL-E
-  const [dalleKey, setDalleKey] = useState("");
-  const [dallePrompt, setDallePrompt] = useState("");
-  const [dalleResult, setDalleResult] = useState<string | null>(null);
-  const [dalleLoading, setDalleLoading] = useState(false);
-  const f2IframeRef = useRef<HTMLIFrameElement>(null);
-  const f2ContainerRef = useRef<HTMLDivElement>(null);
-  const [f2Scale, setF2Scale] = useState(0.5);
-  // Chat panel
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState<{role:string;content:string}[]>([
-    { role: "assistant", content: "I'm Claude, integrated into EditorPro. I can help you with code, design, debugging. Ask me anything about your project." }
-  ]);
-  const [chatLoading, setChatLoading] = useState(false);
-
-  const sendChat = async () => {
-    if (!chatInput.trim()) return;
-    const userMsg = { role: "user", content: chatInput };
-    setChatMessages(prev => [...prev, userMsg]);
-    setChatInput("");
-    setChatLoading(true);
-    try {
-      const r = await fetch("/api/chat/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-5",
-          threadId: "editor-chat",
-          messages: [...chatMessages, userMsg].map(m => ({ role: m.role, content: m.content })),
-        }),
-      });
-      // Read SSE stream and collect full text
-      const reader = r.body?.getReader();
-      const decoder = new TextDecoder();
-      let full = "";
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value);
-          for (const line of chunk.split("\n")) {
-            if (line.startsWith("data: ")) {
-              try {
-                const d = JSON.parse(line.slice(6));
-                if (d.delta?.text) full += d.delta.text;
-                if (d.choices?.[0]?.delta?.content) full += d.choices[0].delta.content;
-              } catch { /* skip non-JSON lines */ }
-            }
-          }
-        }
-      }
-      setChatMessages(prev => [...prev, { role: "assistant", content: full || "No response." }]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      setChatMessages(prev => [...prev, { role: "assistant", content: "Error: " + msg }]);
-    }
-    setChatLoading(false);
-  }; // 0 = auto, >0 = manual
-  const [monacoLoaded, setMonacoLoaded] = useState(false);
-  const monacoEditorRef = useRef<any>(null);
-  const monacoContainerRef = useRef<HTMLDivElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const imgRef = useRef<HTMLInputElement>(null);
-
-  // Persist token to localStorage
-  useEffect(() => { try { const t = localStorage.getItem("ep-gh-token"); if (t) setGhToken(t); } catch {} }, []);
-  useEffect(() => { if (ghToken) try { localStorage.setItem("ep-gh-token", ghToken); } catch {} }, [ghToken]);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const dev = D[did as keyof typeof D];
-  const brw = B[bid as keyof typeof B];
-  const et = brw.tc > 0 ? 0 : dev.st;
-  const eb = brw.bc > 0 ? 0 : dev.sb;
+  const dev = DEVS[did]; const brw = BROWS[bid];
   const visH = dev.h - brw.tc - brw.bc;
-  const safeH = visH - et - eb;
-  const overflow = dev.h - visH;
-  const avail = bForD(dev);
-
-  useEffect(() => { if (!avail.includes(bid)) setBid(avail[0]); }, [did]);
-
-  // ═══ SCALE ═══
-  const [autoScale, setAutoScale] = useState(0.5);
   useEffect(() => {
-    if (!containerRef.current) return;
+    const avail = browsersFor(dev);
+    if (!avail.includes(bid)) setBid(avail[0]);
+  }, [did]);
+
+  // Scale
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.45);
+  const [manualZoom, setManualZoom] = useState(0);
+  useEffect(() => {
+    const el = wrapRef.current; if (!el) return;
     const ro = new ResizeObserver(([e]) => {
       const { width: cw, height: ch } = e.contentRect;
-      const totalH = dev.h + brw.tc + brw.bc + 30;
-      setAutoScale(Math.min((cw - 40) / (dev.w + 4), (ch - 40) / totalH, 1));
+      const auto = Math.min((cw - 48) / dev.w, (ch - 48) / dev.h, 1);
+      setScale(manualZoom > 0 ? manualZoom : auto);
     });
-    ro.observe(containerRef.current);
+    ro.observe(el);
     return () => ro.disconnect();
-  }, [dev, brw]);
+  }, [dev, manualZoom]);
 
-  // ═══ TSX → HTML conversion state (must be before previewHTML memo) ═══
-  const [htmlPreview, setHtmlPreview] = useState<string | null>(null);
-  const [converting, setConverting] = useState(false);
+  // iframe
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // ═══ PREVIEW HTML ═══
-  const previewHTML = useMemo(() => `<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=${dev.w},initial-scale=1,viewport-fit=cover">
-<style>
-:root{--sat:${et}px;--sab:${eb}px;--sal:0px;--sar:0px;}
-*{margin:0;padding:0;box-sizing:border-box;}
-html,body{width:${dev.w}px;height:${visH}px;overflow:hidden;background:#000;font-family:system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;}
-[data-v-hover]{transition:outline 0.1s;}
-</style>
-<script src="https://cdn.tailwindcss.com"><\/script>
-<script>
-let lastEl=null,selEl=null,handles=[],dragState=null;
-function rmHandles(){handles.forEach(h=>h.remove());handles=[];}
-function mkHandles(el){
-rmHandles();
-var r=el.getBoundingClientRect(),sr=document.getElementById('root').getBoundingClientRect();
-var pos=[['nw',0,0],['n',0.5,0],['ne',1,0],['w',0,0.5],['e',1,0.5],['sw',0,1],['s',0.5,1],['se',1,1]];
-pos.forEach(function(p){
-var h=document.createElement('div');
-h.className='ep-handle';h.dataset.dir=p[0];
-h.style.cssText='position:absolute;width:8px;height:8px;background:#f97316;border:1px solid #fff;border-radius:2px;z-index:99999;cursor:'+p[0]+'-resize;pointer-events:auto;';
-h.style.left=(r.left-sr.left+r.width*p[1]-4)+'px';
-h.style.top=(r.top-sr.top+r.height*p[2]-4)+'px';
-document.getElementById('root').appendChild(h);handles.push(h);
-h.addEventListener('mousedown',function(ev){
-ev.preventDefault();ev.stopPropagation();
-dragState={type:'resize',dir:p[0],startX:ev.clientX,startY:ev.clientY,startW:r.width,startH:r.height,startL:r.left-sr.left,startT:r.top-sr.top,el:el};
-});
-});
-// Move handle (the element itself)
-var mv=document.createElement('div');
-mv.style.cssText='position:absolute;z-index:99998;cursor:move;border:1px dashed rgba(249,115,22,0.6);pointer-events:auto;';
-mv.style.left=(r.left-sr.left)+'px';mv.style.top=(r.top-sr.top)+'px';
-mv.style.width=r.width+'px';mv.style.height=r.height+'px';
-document.getElementById('root').appendChild(mv);handles.push(mv);
-mv.addEventListener('mousedown',function(ev){
-ev.preventDefault();ev.stopPropagation();
-dragState={type:'move',startX:ev.clientX,startY:ev.clientY,startL:parseFloat(el.style.left)||0,startT:parseFloat(el.style.top)||0,el:el};
-});
-}
-document.addEventListener('mousemove',function(ev){
-if(!dragState)return;
-var dx=ev.clientX-dragState.startX,dy=ev.clientY-dragState.startY;
-if(dragState.type==='move'){
-dragState.el.style.position='relative';
-dragState.el.style.left=(dragState.startL+dx)+'px';
-dragState.el.style.top=(dragState.startT+dy)+'px';
-mkHandles(dragState.el);
-notifyParent(dragState.el);
-}
-if(dragState.type==='resize'){
-var d=dragState.dir,nw=dragState.startW,nh=dragState.startH;
-if(d.includes('e'))nw+=dx;if(d.includes('w'))nw-=dx;
-if(d.includes('s'))nh+=dy;if(d.includes('n'))nh-=dy;
-dragState.el.style.width=Math.max(20,nw)+'px';
-dragState.el.style.height=Math.max(20,nh)+'px';
-mkHandles(dragState.el);
-notifyParent(dragState.el);
-}
-});
-document.addEventListener('mouseup',function(){dragState=null;});
-function notifyParent(el){
-var cs=getComputedStyle(el),r=el.getBoundingClientRect();
-window.parent.postMessage({type:'sel',tag:el.tagName.toLowerCase(),cls:el.className||'',
-txt:(el.innerText||'').slice(0,100),
-rect:{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)},
-sty:{color:cs.color,backgroundColor:cs.backgroundColor,fontSize:cs.fontSize,fontWeight:cs.fontWeight,
-fontFamily:cs.fontFamily,fontStyle:cs.fontStyle,textAlign:cs.textAlign,textDecoration:cs.textDecoration,textTransform:cs.textTransform,
-lineHeight:cs.lineHeight,letterSpacing:cs.letterSpacing,
-padding:cs.padding,paddingTop:cs.paddingTop,paddingBottom:cs.paddingBottom,paddingLeft:cs.paddingLeft,paddingRight:cs.paddingRight,
-margin:cs.margin,marginTop:cs.marginTop,marginBottom:cs.marginBottom,
-width:cs.width,height:cs.height,maxWidth:cs.maxWidth,minHeight:cs.minHeight,
-border:cs.border,borderRadius:cs.borderRadius,display:cs.display,position:cs.position,
-flexDirection:cs.flexDirection,justifyContent:cs.justifyContent,alignItems:cs.alignItems,gap:cs.gap,
-overflow:cs.overflow,opacity:cs.opacity,boxShadow:cs.boxShadow,background:cs.background,
-transform:cs.transform,transition:cs.transition}
-},'*');
-}
-document.addEventListener('mouseover',function(e){
-if(dragState)return;
-if(lastEl)lastEl.style.outline='';
-e.target.style.outline='2px solid rgba(249,115,22,0.4)';lastEl=e.target;
-});
-document.addEventListener('mouseout',function(e){if(!dragState)e.target.style.outline='';});
-document.addEventListener('click',function(e){
-if(dragState)return;
-e.preventDefault();e.stopPropagation();
-selEl=e.target;mkHandles(selEl);notifyParent(selEl);
-});
-window.addEventListener('message',function(e){
-if(!selEl)return;
-if(e.data&&e.data.type==='applyStyle'){selEl.style[e.data.prop]=e.data.value;mkHandles(selEl);}
-if(e.data&&e.data.type==='setText'){selEl.innerText=e.data.value;}
-});
-setTimeout(function(){
-var colors=new Set();
-document.querySelectorAll('*').forEach(function(el){
-var cs=getComputedStyle(el);
-[cs.color,cs.backgroundColor,cs.borderColor,cs.borderTopColor,cs.outlineColor].forEach(function(c){
-if(c&&c!=='transparent'&&c!=='rgba(0, 0, 0, 0)'&&c!=='rgb(0, 0, 0)'){colors.add(c);}
-});
-});
-window.parent.postMessage({type:'allColors',colors:Array.from(colors)},'*');
-},500);
-<\/script>
-</head><body><div id="root" style="width:${dev.w}px;height:${visH}px;overflow:auto;">${htmlPreview ?? code}</div></body></html>`, [htmlPreview, code, dev, brw, et, eb, visH]);
+  // Preview URL — empty = blank slate
+  const [proxyUrl, setProxyUrl] = useState(""); // live page to proxy
+  const [loading, setLoading]   = useState(false);
 
-  useEffect(() => {
-    if (!iframeRef.current) return;
-    if (liveUrl) {
-      // Always load URL directly — proxy breaks React apps
-      iframeRef.current.src = liveUrl;
-      setLastLiveUrl(liveUrl);
-      return;
-    }
-    if (previewTimer.current) clearTimeout(previewTimer.current);
-    previewTimer.current = setTimeout(() => {
-      const blob = new Blob([previewHTML], { type: "text/html" });
-      if (iframeRef.current) iframeRef.current.src = URL.createObjectURL(blob);
-    }, 250);
-  }, [previewHTML, liveUrl]);
+  // GitHub
+  const [ghToken,  setGhToken]  = useState("");
+  const [ghRepo,   setGhRepo]   = useState("hawk7227/patientpanel");
+  const [ghBranch, setGhBranch] = useState("master");
+  const [ghPath,   setGhPath]   = useState("src/app/express-checkout/page.tsx");
+  const [ghRepos,  setGhRepos]  = useState<{ full_name: string }[]>([]);
+  const [ghFiles,  setGhFiles]  = useState<string[]>([]);
+  const [ghBusy,   setGhBusy]   = useState(false);
+  const [tsxSrc,   setTsxSrc]   = useState(""); // pulled TSX for write-back + push
+  const [pushMsg,  setPushMsg]   = useState("");
 
-  // ═══ TRACK IFRAME NAVIGATION ═══
-  useEffect(() => {
-    if (!iframeRef.current) return;
-    const frame = iframeRef.current;
-    const onLoad = () => {
-      if (liveUrl) {
-        try {
-          const currentUrl = frame.contentWindow?.location?.href;
-          if (currentUrl && currentUrl !== "about:blank") { setLastLiveUrl(currentUrl); }
-        } catch { /* cross-origin, use the liveUrl we set */ }
+  useEffect(() => { try { const t = localStorage.getItem("ep-gh-token"); if (t) setGhToken(t); } catch {} }, []);
+  useEffect(() => { if (ghToken) try { localStorage.setItem("ep-gh-token", ghToken); } catch {} }, [ghToken]);
+
+  const fetchRepos = useCallback(async () => {
+    if (!ghToken) return;
+    setGhBusy(true);
+    try {
+      const r = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated", {
+        headers: { Authorization: `Bearer ${ghToken}` },
+      });
+      if (r.ok) setGhRepos(await r.json());
+    } catch {}
+    setGhBusy(false);
+  }, [ghToken]);
+
+  const fetchFiles = useCallback(async (repo: string, branch: string) => {
+    if (!ghToken || !repo) return;
+    setGhBusy(true);
+    try {
+      const r = await fetch(`https://api.github.com/repos/${repo}/git/trees/${branch}?recursive=1`, {
+        headers: { Authorization: `Bearer ${ghToken}` },
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setGhFiles(
+          (d.tree || [])
+            .filter((f: { type: string; path: string }) => f.type === "blob" && /\.(tsx|ts|jsx|html|css)$/.test(f.path))
+            .map((f: { path: string }) => f.path)
+        );
       }
+    } catch {}
+    setGhBusy(false);
+  }, [ghToken]);
+
+  useEffect(() => { if (ghToken && ghRepos.length === 0) fetchRepos(); }, [ghToken]);
+  useEffect(() => { if (ghToken && ghRepo) fetchFiles(ghRepo, ghBranch); }, [ghToken, ghRepo, ghBranch]);
+
+  // ── PULL ─────────────────────────────────────────────────────────────────
+  const pull = useCallback(async () => {
+    if (!ghToken || !ghPath) return;
+    setLoading(true);
+    try {
+      // 1. Pull TSX source for write-back
+      const r = await fetch(
+        `https://api.github.com/repos/${ghRepo}/contents/${ghPath}?ref=${ghBranch}`,
+        { headers: { Authorization: `Bearer ${ghToken}` } }
+      );
+      const d = await r.json();
+      if (!d.content) throw new Error("No content returned from GitHub");
+      setTsxSrc(atob(d.content.replace(/\n/g, "")));
+
+      // 2. Derive live URL and load via proxy (same-origin after proxy)
+      const liveUrl = KNOWN[ghPath] || null;
+      if (liveUrl) {
+        setProxyUrl(liveUrl);
+      } else {
+        // No known URL — show placeholder message
+        setProxyUrl("");
+        alert(`No live URL mapped for ${ghPath}.\nAdd it to KNOWN in the editor source.`);
+      }
+      setInspect(true);
+      setSel(null);
+      setRightPanel("props");
+    } catch (e) {
+      alert("Pull failed: " + (e instanceof Error ? e.message : e));
+    }
+    setLoading(false);
+  }, [ghToken, ghRepo, ghBranch, ghPath]);
+
+  // ── PUSH ─────────────────────────────────────────────────────────────────
+  const push = useCallback(async () => {
+    if (!ghToken || !tsxSrc || !ghPath) return;
+    setPushMsg("Pushing...");
+    try {
+      const getR = await fetch(
+        `https://api.github.com/repos/${ghRepo}/contents/${ghPath}?ref=${ghBranch}`,
+        { headers: { Authorization: `Bearer ${ghToken}` } }
+      );
+      const existing = getR.ok ? await getR.json() : null;
+      const putR = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${ghToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Style update via EditorPro",
+          content: btoa(unescape(encodeURIComponent(tsxSrc))),
+          branch: ghBranch,
+          ...(existing?.sha ? { sha: existing.sha } : {}),
+        }),
+      });
+      if (!putR.ok) throw new Error(`GitHub ${putR.status}`);
+      setPushMsg("✓ Pushed");
+    } catch (e) {
+      setPushMsg("✗ " + (e instanceof Error ? e.message : e));
+    }
+    setTimeout(() => setPushMsg(""), 3000);
+  }, [ghToken, ghRepo, ghBranch, ghPath, tsxSrc]);
+
+  // ── Write-back (debounced) ────────────────────────────────────────────────
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
+  const pending = useRef<{ prop: string; value: string; elText: string }[]>([]);
+  const wbTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushWB = useCallback(
+    async (changes: { prop: string; value: string; elText: string }[]) => {
+      if (!tsxSrc || !changes.length) return;
+      try {
+        const r = await fetch("/api/editor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "write-back", tsx: tsxSrc, changes }),
+        });
+        if (r.ok) {
+          const { tsx } = await r.json();
+          if (tsx) setTsxSrc(tsx);
+        }
+      } catch {}
+      setSaveStatus("saved");
+    },
+    [tsxSrc]
+  );
+
+  const queueWB = useCallback(
+    (prop: string, value: string, elText: string) => {
+      if (!tsxSrc) return;
+      pending.current.push({ prop, value, elText });
+      setSaveStatus("saving");
+      if (wbTimer.current) clearTimeout(wbTimer.current);
+      wbTimer.current = setTimeout(() => {
+        const ch = [...pending.current]; pending.current = [];
+        flushWB(ch);
+      }, 1400);
+    },
+    [tsxSrc, flushWB]
+  );
+
+  // ── Selection state ───────────────────────────────────────────────────────
+  const [inspect, setInspect] = useState(false);
+  const [sel, setSel]         = useState<SelState | null>(null);
+  const [swatches, setSwatches] = useState<string[]>([]);
+  const [rightPanel, setRightPanel] = useState<"github" | "props" | null>("github");
+
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === "ep-sel") {
+        setSel(e.data as SelState);
+        setRightPanel("props");
+        // collect colors from selection
+        const { sty } = e.data as SelState;
+        setSwatches(prev => {
+          const set = new Set(prev);
+          [sty.color, sty.backgroundColor].forEach(c => {
+            const h = hex(c); if (h) set.add(h);
+          });
+          return Array.from(set).slice(0, 32);
+        });
+      }
+      if (e.data?.type === "ep-colors") {
+        setSwatches((e.data.colors as string[]).slice(0, 32));
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  // Inject inspect script on iframe load
+  useEffect(() => {
+    const frame = iframeRef.current; if (!frame) return;
+    const onLoad = () => {
+      if (!inspect) return;
+      try {
+        const doc = frame.contentDocument;
+        if (!doc || doc.getElementById("__ep_inspector")) return;
+        // Already injected by proxy — just confirm
+      } catch {}
     };
     frame.addEventListener("load", onLoad);
     return () => frame.removeEventListener("load", onLoad);
-  }, [liveUrl]);
+  }, [inspect]);
 
-  // ═══ ELEMENT SELECTION + COLOR SCAN ═══
+  // Update iframe src when proxyUrl changes
   useEffect(() => {
-    const h = (e: MessageEvent) => {
-      if (e.data?.type === "sel") {
-        setSel(e.data);
-        setPanel("props");
-        const sty = e.data.sty;
-        if (sty) {
-          const colors = new Set(swatches);
-          [sty.color, sty.backgroundColor, sty.borderColor].forEach((c: string) => {
-            if (c && c !== "transparent" && !c.includes("0, 0, 0, 0") && c !== "rgba(0, 0, 0, 0)") {
-              colors.add(rgb2hex(c));
-            }
-          });
-          setSwatches(Array.from(colors).filter(c => c !== "transparent").slice(0, 30));
+    const frame = iframeRef.current; if (!frame) return;
+    if (proxyUrl) {
+      frame.src = `/api/proxy?url=${encodeURIComponent(proxyUrl)}`;
+    } else {
+      frame.src = "about:blank";
+    }
+  }, [proxyUrl]);
+
+  // ── Apply style / text ───────────────────────────────────────────────────
+  const applyStyle = useCallback(
+    (prop: string, value: string) => {
+      setSel(prev => {
+        if (prev) queueWB(prop, value, prev.txt);
+        return prev ? { ...prev, sty: { ...prev.sty, [prop]: value } } : prev;
+      });
+      iframeRef.current?.contentWindow?.postMessage({ type: "ep-style", prop, value }, "*");
+    },
+    [queueWB]
+  );
+
+  const applyText = useCallback(
+    (value: string) => {
+      setSel(prev => {
+        if (prev) queueWB("__text__", value, prev.txt);
+        return prev ? { ...prev, txt: value } : prev;
+      });
+      iframeRef.current?.contentWindow?.postMessage({ type: "ep-text", value }, "*");
+    },
+    [queueWB]
+  );
+
+  // ── Click on overlay → hit-test inside iframe ─────────────────────────────
+  const handleOverlayClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / scale;
+      const y = (e.clientY - rect.top) / scale;
+      try {
+        const doc = iframeRef.current?.contentDocument;
+        if (!doc) return;
+        // Clear previous selection
+        doc.querySelectorAll("[data-ep-sel]").forEach((n) => {
+          (n as HTMLElement).style.outline = ""; n.removeAttribute("data-ep-sel");
+        });
+        const el = doc.elementFromPoint(x, y) as HTMLElement | null;
+        if (!el) return;
+        el.style.outline = "2px solid #f97316";
+        el.setAttribute("data-ep-sel", "1");
+        const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+        const sty: Record<string, string> = {};
+        PROP_GROUPS.flatMap(g => g.props).forEach(({ k }) => {
+          sty[k] = (cs as unknown as Record<string, string>)[k] || "";
+        });
+        const snap: SelState = {
+          tag: el.tagName.toLowerCase(),
+          txt: (el.textContent || "").slice(0, 200),
+          rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+          sty,
+        };
+        setSel(snap);
+        setRightPanel("props");
+        setSwatches(prev => {
+          const set = new Set(prev);
+          [cs.color, cs.backgroundColor].forEach(c => { const h = hex(c); if (h) set.add(h); });
+          return Array.from(set).slice(0, 32);
+        });
+      } catch {
+        // Cross-origin block — script in page handles it via postMessage
+      }
+    },
+    [scale]
+  );
+
+  const handleOverlayMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / scale;
+      const y = (e.clientY - rect.top) / scale;
+      try {
+        const doc = iframeRef.current?.contentDocument; if (!doc) return;
+        doc.querySelectorAll("[data-ep-hov]").forEach((n) => {
+          if (!n.getAttribute("data-ep-sel")) (n as HTMLElement).style.outline = "";
+          n.removeAttribute("data-ep-hov");
+        });
+        const el = doc.elementFromPoint(x, y) as HTMLElement | null;
+        if (el && !el.getAttribute("data-ep-sel")) {
+          el.style.outline = "2px solid rgba(249,115,22,0.4)";
+          el.setAttribute("data-ep-hov", "1");
         }
-      }
-      if (e.data?.type === "allColors") {
-        const all = (e.data.colors || []).map((c: string) => rgb2hex(c)).filter((c: string) => c !== "transparent" && c !== "#000000" && c !== "#ffffff");
-        const unique = Array.from(new Set(all)) as string[];
-        setSwatches(unique.slice(0, 30));
-      }
-    };
-    window.addEventListener("message", h);
-    return () => window.removeEventListener("message", h);
-  }, [swatches]);
+      } catch {}
+    },
+    [scale]
+  );
 
-  // ═══ FILE ═══
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = (ev) => { if (typeof ev.target?.result === 'string') setCode(ev.target.result); };
-    r.readAsText(f);
-  };
-  const download = () => { const b = new Blob([code], { type: "text/plain" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "page.tsx"; a.click(); };
-
-  // ═══ AUTOSAVE ═══
-  useEffect(() => {
-    setSaveStatus("saving");
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      try { localStorage.setItem("vep-code", code); } catch {}
-      setSaveStatus("saved");
-    }, 600);
-  }, [code]);
-  useEffect(() => { try { const s = localStorage.getItem("vep-code"); if (s) setCode(s); } catch {} }, []);
-
-  // ═══ IMAGE AI ═══
-  const onImg = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    setImgAnalyzing(true); setPanel("image");
+  const handleOverlayLeave = useCallback(() => {
     try {
-      const b64 = await new Promise(res => { const r = new FileReader(); r.onload = () => res((r.result as string).split(",")[1]); r.readAsDataURL(f); });
-      const resp = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 4000,
-          messages: [{ role: "user", content: [
-            { type: "image", source: { type: "base64", media_type: f.type, data: b64 } },
-            { type: "text", text: `Analyze this UI. Return ONLY JSON: {"colors":[{"hex":"#...","name":"...","usage":"..."}],"typography":[{"el":"...","size":"...","weight":"...","family":"...","color":"#..."}],"spacing":[{"el":"...","value":"..."}],"borders":[{"el":"...","radius":"...","color":"#...","width":"..."}],"backgrounds":[{"el":"...","value":"..."}]}` }
-          ]}]})});
-      const data = await resp.json();
-      const txt = data.content?.find((b: any) => b.type === "text")?.text || "";
-      setImgResult(JSON.parse(txt.replace(/```json|```/g, "").trim()));
-    } catch (err: any) { setImgResult({ error: err.message }); }
-    setImgAnalyzing(false);
-  };
-
-  // ═══ GITHUB ═══
-  const push = async () => {
-    if (!ghToken || !ghRepo) return; setPushSt("pushing...");
-    try {
-      const g = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}?ref=${ghBranch}`, { headers: { Authorization: `Bearer ${ghToken}` } });
-      const ex = g.ok ? await g.json() : null;
-      const p = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${ghPath}`, { method: "PUT",
-        headers: { Authorization: `Bearer ${ghToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ message: "Update via EditorPro", content: btoa(unescape(encodeURIComponent(code))), branch: ghBranch, ...(ex?.sha ? { sha: ex.sha } : {}) }) });
-      if (!p.ok) throw new Error(`${p.status}`);
-      setPushSt("✓"); setTimeout(() => setPushSt(null), 2000);
-    } catch (err: any) { setPushSt("✗ " + err.message); setTimeout(() => setPushSt(null), 4000); }
-  };
-
-  // ═══ GITHUB — fetch repos ═══
-  const ghFetchRepos = async () => {
-    if (!ghToken) return;
-    setGhLoading(true);
-    try {
-      const r = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated", { headers: { Authorization: `Bearer ${ghToken}` } });
-      if (r.ok) { const data = await r.json(); setGhRepos(data); }
-      else { console.error("GitHub repos fetch failed:", r.status); }
-    } catch (e) { console.error("GitHub repos fetch error:", e); }
-    setGhLoading(false);
-  };
-  useEffect(() => { if (ghToken && ghRepos.length === 0) ghFetchRepos(); }, [ghToken]);
-
-  // ═══ GITHUB — fetch file tree for dropdown ═══
-  const ghFetchFileTree = async (repo: string, branch: string, path: string = "") => {
-    if (!ghToken || !repo) return;
-    setGhLoading(true);
-    try {
-      const r = await fetch(`https://api.github.com/repos/${repo}/git/trees/${branch}?recursive=1`, { headers: { Authorization: `Bearer ${ghToken}` } });
-      if (r.ok) {
-        const data = await r.json();
-        const files = (data.tree || []).filter((f: any) => f.type === "blob" && (f.path.endsWith(".tsx") || f.path.endsWith(".ts") || f.path.endsWith(".jsx") || f.path.endsWith(".html") || f.path.endsWith(".css"))).map((f: any) => f.path);
-        setGhFileList(files);
-      }
-    } catch { /* ignore */ }
-    setGhLoading(false);
-  };
-  useEffect(() => { if (ghToken && ghRepo) ghFetchFileTree(ghRepo, ghBranch); }, [ghRepo, ghBranch, ghToken]);
-
-  // ═══ GITHUB BROWSE ═══
-  const ghBrowse = async (path: string = "") => {
-    if (!ghToken || !ghRepo) return; setGhLoading(true);
-    try {
-      const r = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${path}?ref=${ghBranch}`, { headers: { Authorization: `Bearer ${ghToken}` } });
-      if (!r.ok) throw new Error("" + r.status);
-      const data = await r.json();
-      setGhFiles(Array.isArray(data) ? data : [data]); setGhBrowsePath(path);
-    } catch { setGhFiles([]); }
-    setGhLoading(false);
-  };
-  // ═══ TSX → HTML via server (no client key needed) ═══
-  const tsxToHtml = async (tsx: string): Promise<string | null> => {
-    setConverting(true);
-    try {
-      const r = await fetch("/api/editor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "tsx-to-html", tsx }),
+      iframeRef.current?.contentDocument?.querySelectorAll("[data-ep-hov]").forEach((n) => {
+        if (!n.getAttribute("data-ep-sel")) (n as HTMLElement).style.outline = "";
+        n.removeAttribute("data-ep-hov");
       });
-      if (!r.ok) { const e = await r.json(); console.error("tsx-to-html:", e.error); return null; }
-      const { html } = await r.json();
-      return html || null;
-    } catch (e) { console.error("tsx-to-html fetch:", e); return null; }
-    finally { setConverting(false); }
-  };
+    } catch {}
+  }, []);
 
-  const ghLoadFile = async (path: string) => {
-    if (!ghToken || !ghRepo) return; setGhLoading(true);
-    try {
-      const r = await fetch(`https://api.github.com/repos/${ghRepo}/contents/${path}?ref=${ghBranch}`, { headers: { Authorization: `Bearer ${ghToken}` } });
-      const data = await r.json();
-      if (data.content) {
-        const raw = atob(data.content.replace(/\n/g, ""));
-        setCode(raw);
-        setGhPath(path);
-        setLiveUrl("");
-        setHtmlPreview(null);
-        setPanel(null);
-        // Convert TSX → HTML via server (no client key needed)
-        const html = await tsxToHtml(raw);
-        if (html) {
-          setHtmlPreview(html);
-          setInspectMode(true); // auto-enter inspect mode ready to click
-        }
-      }
-    } catch { /* ignore */ }
-    setGhLoading(false);
-  };
-
-  // ═══ URL LOAD ═══
-  const loadUrl = () => { if (!urlInput.trim()) return; setLiveUrl(urlInput.startsWith("http") ? urlInput : "https://" + urlInput); setPanel(null); };
-
-  // ═══ DALL-E ═══
-  useEffect(() => { try { const k = localStorage.getItem("ep-dalle-key"); if (k) setDalleKey(k); } catch {} }, []);
-  useEffect(() => { if (dalleKey) try { localStorage.setItem("ep-dalle-key", dalleKey); } catch {} }, [dalleKey]);
-  const generateImage = async () => {
-    if (!dalleKey || !dallePrompt.trim()) return;
-    setDalleLoading(true); setDalleResult(null);
-    try {
-      const r = await fetch("https://api.openai.com/v1/images/generations", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${dalleKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "dall-e-3", prompt: dallePrompt, n: 1, size: "1024x1792", quality: "hd" })
-      });
-      const data = await r.json();
-      if (data.data?.[0]?.url) { setDalleResult(data.data[0].url); }
-      else { setDalleResult(null); }
-    } catch (err: any) { /* ignore */ }
-    setDalleLoading(false);
-  };
-
-  // ═══ FRAME 2 — scale ═══
-  useEffect(() => {
-    if (!f2ContainerRef.current || !f2Open) return;
-    const ro = new ResizeObserver(([e]) => {
-      const { width: cw, height: ch } = e.contentRect;
-      const d2 = (D as any)[f2Did] || D["i15p"];
-      const sx = Math.max(0.15, (cw - 20) / (d2.w + 4));
-      const sy = Math.max(0.15, (ch - 20) / (d2.h + 30));
-      setF2Scale(Math.min(sx, sy, 1));
-    });
-    ro.observe(f2ContainerRef.current);
-    return () => ro.disconnect();
-  }, [f2Did, f2Open]);
-
-  // ═══ FRAME 2 — load URL ═══
-  useEffect(() => {
-    if (!f2IframeRef.current || !f2Open) return;
-    if (f2Url) { f2IframeRef.current.src = f2Url; }
-    else if (f2Code) {
-      const d2 = (D as any)[f2Did] || D["i15p"];
-      const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box;}html,body{width:' + d2.w + 'px;overflow:auto;background:#000;font-family:system-ui;}</style></head><body>' + f2Code + '</body></html>';
-      const blob = new Blob([html], { type: "text/html" });
-      f2IframeRef.current.src = URL.createObjectURL(blob);
-    }
-  }, [f2Url, f2Code, f2Did, f2Open]);
-
-  // ═══ MONACO ═══
-  useEffect(() => {
-    if (panel !== "code") return;
-    if (monacoEditorRef.current) return;
-    if ((window as any).monaco) { initMon(); return; }
-    const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js";
-    s.onload = () => { (window as any).require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs" } }); (window as any).require(["vs/editor/editor.main"], () => initMon()); };
-    document.head.appendChild(s);
-  }, [panel]);
-  const initMon = () => {
-    if (!monacoContainerRef.current || monacoEditorRef.current) return;
-    const ed = (window as any).monaco.editor.create(monacoContainerRef.current, { value: code, language: "typescript", theme: "vs-dark", fontSize: 12, minimap: { enabled: false }, wordWrap: "on", scrollBeyondLastLine: false, padding: { top: 8 } });
-    ed.onDidChangeModelContent(() => setCode(ed.getValue()));
-    monacoEditorRef.current = ed; setMonacoLoaded(true);
-  };
-  useEffect(() => { if (monacoEditorRef.current && monacoEditorRef.current.getValue() !== code) monacoEditorRef.current.setValue(code); }, [code]);
-
-  const rgb2hex = (rgb: string) => { if (!rgb || rgb === "transparent" || rgb.includes("0, 0, 0, 0")) return "transparent"; const m = rgb.match(/\d+/g); if (!m || m.length < 3) return rgb; return "#" + m.slice(0, 3).map((n: string) => parseInt(n).toString(16).padStart(2, "0")).join(""); };
-  const sc = { critical: "#ef4444", high: "#f97316", medium: "#eab308" };
-  const deviceWarnings = useMemo(() => {
-    const w = [WARN[0]]; // 100vh always
-    if (dev.di) w.push(WARN[1]);
-    if (dev.sb > 0) w.push(WARN[2]);
-    w.push(WARN[3]); // keyboard always
-    if (dev.c === "ios") w.push(WARN[4]);
-    if (dev.c === "and") w.push(WARN[5]);
-    return w;
-  }, [did]);
-
-  // ═══ WRITE-BACK: DOM changes → TSX source via server ═══
-  const writeBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingChanges = useRef<{prop: string; value: string; elText: string}[]>([]);
-
-  const writeBackToTsx = useCallback(async (changes: {prop: string; value: string; elText: string}[]) => {
-    if (!ghPath || !code) return;
-    try {
-      const r = await fetch("/api/editor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "write-back", tsx: code, changes }),
-      });
-      if (!r.ok) { const e = await r.json(); console.error("write-back:", e.error); return; }
-      const { tsx: updated } = await r.json();
-      if (updated) { setCode(updated); setSaveStatus("saved"); }
-    } catch (e) { console.error("write-back fetch:", e); }
-  }, [ghPath, code]);
-
-  // ═══ APPLY STYLE — sends to iframe + updates sel state + queues write-back ═══
-  const applyStyle = useCallback((prop: string, value: string) => {
-    let elText = "";
-    setSel((prev: any) => {
-      elText = prev?.txt || "";
-      if (prev?._el) { try { prev._el.style[prop] = value; } catch { /* ignore */ } }
-      return prev ? { ...prev, sty: { ...prev.sty, [prop]: value } } : prev;
-    });
-    if (iframeRef.current?.contentWindow) {
-      try { iframeRef.current.contentWindow.postMessage({ type: "applyStyle", prop, value }, "*"); } catch { /* ignore */ }
-    }
-    if (ghPath) {
-      pendingChanges.current.push({ prop, value, elText });
-      setSaveStatus("saving");
-      if (writeBackTimer.current) clearTimeout(writeBackTimer.current);
-      writeBackTimer.current = setTimeout(() => {
-        const changes = [...pendingChanges.current];
-        pendingChanges.current = [];
-        writeBackToTsx(changes);
-      }, 1500);
-    }
-  }, [ghPath, writeBackToTsx]);
-
-  const applyText = useCallback((value: string) => {
-    setSel((prev: any) => {
-      if (prev?._el) { try { prev._el.innerText = value; } catch { /* ignore */ } }
-      return prev ? { ...prev, txt: value } : prev;
-    });
-    if (iframeRef.current?.contentWindow) {
-      try { iframeRef.current.contentWindow.postMessage({ type: "setText", value }, "*"); } catch { /* ignore */ }
-    }
-    if (ghPath) {
-      pendingChanges.current.push({ prop: "__text__", value, elText: value });
-      setSaveStatus("saving");
-      if (writeBackTimer.current) clearTimeout(writeBackTimer.current);
-      writeBackTimer.current = setTimeout(() => {
-        const changes = [...pendingChanges.current];
-        pendingChanges.current = [];
-        writeBackToTsx(changes);
-      }, 1500);
-    }
-  }, [ghPath, writeBackToTsx]);
-
-
-  // ═══ STYLE GROUPS for inspector ═══
-  const styleGroups = useMemo(() => {
+  // ── Filtered style groups ─────────────────────────────────────────────────
+  const filteredGroups = useMemo(() => {
     if (!sel?.sty) return [];
-    const s = sel.sty;
-    return [
-      { label: "Typography", items: [
-        { k: "color", v: s.color, type: "color" },
-        { k: "fontSize", v: s.fontSize, type: "size" },
-        { k: "fontWeight", v: s.fontWeight, type: "select", opts: ["100","200","300","400","500","600","700","800","900"] },
-        { k: "fontFamily", v: s.fontFamily, type: "text" },
-        { k: "textAlign", v: s.textAlign, type: "select", opts: ["left","center","right","justify"] },
-        { k: "lineHeight", v: s.lineHeight, type: "text" },
-        { k: "letterSpacing", v: s.letterSpacing, type: "text" },
-        { k: "textTransform", v: s.textTransform, type: "select", opts: ["none","uppercase","lowercase","capitalize"] },
-      ]},
-      { label: "Background", items: [
-        { k: "backgroundColor", v: s.backgroundColor, type: "color" },
-        { k: "background", v: s.background, type: "text" },
-        { k: "opacity", v: s.opacity, type: "text" },
-      ]},
-      { label: "Spacing", items: [
-        { k: "paddingTop", v: s.paddingTop, type: "size" },
-        { k: "paddingBottom", v: s.paddingBottom, type: "size" },
-        { k: "paddingLeft", v: s.paddingLeft, type: "size" },
-        { k: "paddingRight", v: s.paddingRight, type: "size" },
-        { k: "marginTop", v: s.marginTop, type: "size" },
-        { k: "marginBottom", v: s.marginBottom, type: "size" },
-      ]},
-      { label: "Size", items: [
-        { k: "width", v: s.width, type: "text" },
-        { k: "height", v: s.height, type: "text" },
-        { k: "maxWidth", v: s.maxWidth, type: "text" },
-        { k: "minHeight", v: s.minHeight, type: "text" },
-      ]},
-      { label: "Border", items: [
-        { k: "borderRadius", v: s.borderRadius, type: "size" },
-        { k: "border", v: s.border, type: "text" },
-        { k: "boxShadow", v: s.boxShadow, type: "text" },
-      ]},
-      { label: "Layout", items: [
-        { k: "display", v: s.display, type: "select", opts: ["block","flex","grid","inline","inline-flex","none"] },
-        { k: "flexDirection", v: s.flexDirection, type: "select", opts: ["row","column","row-reverse","column-reverse"] },
-        { k: "justifyContent", v: s.justifyContent, type: "select", opts: ["flex-start","center","flex-end","space-between","space-around"] },
-        { k: "alignItems", v: s.alignItems, type: "select", opts: ["flex-start","center","flex-end","stretch","baseline"] },
-        { k: "gap", v: s.gap, type: "size" },
-        { k: "position", v: s.position, type: "select", opts: ["static","relative","absolute","fixed","sticky"] },
-        { k: "overflow", v: s.overflow, type: "select", opts: ["visible","hidden","auto","scroll"] },
-      ]},
-    ];
+    const SKIP = new Set(["normal","none","0px","auto","static","visible","","transparent"]);
+    return PROP_GROUPS.map(g => ({
+      ...g,
+      props: g.props.filter(p => {
+        const v = sel.sty[p.k];
+        return v && !SKIP.has(v) && !v.includes("0, 0, 0, 0");
+      }),
+    })).filter(g => g.props.length > 0);
   }, [sel]);
 
-  const panelW = panel ? 320 : 0;
+  const hasContent = !!proxyUrl;
+  const displayScale = manualZoom > 0 ? manualZoom : scale;
 
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ height: "100vh", width: "100vw", background: "#050607", color: "#e5e7eb", fontFamily: "'Inter',system-ui,sans-serif", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100dvh", width: "100vw", background: "#050607", color: "#e5e7eb", fontFamily: "system-ui,-apple-system,sans-serif", overflow: "hidden" }}>
 
-      {/* ═══ TOP BAR ═══ */}
-      <div style={{ flexShrink: 0, height: 42, background: "#0a0b0d", borderBottom: "1px solid #1f2937", display: "flex", alignItems: "center", padding: "0 12px", gap: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ width: 24, height: 24, borderRadius: 5, background: "linear-gradient(135deg,#2dd4a0,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 11, color: "#000" }}>M</div>
-          <span style={{ fontWeight: 700, fontSize: 13 }}>Editor<span style={{ color: "#2dd4a0" }}>Pro</span></span>
+      {/* ── TOP BAR ── */}
+      <header style={{ flexShrink: 0, height: 44, background: "#09090b", borderBottom: "1px solid #18181b", display: "flex", alignItems: "center", gap: 6, padding: "0 10px", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 6, background: "linear-gradient(135deg,#2dd4a0,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 12, color: "#000" }}>E</div>
+          <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "-0.02em" }}>Editor<span style={{ color: "#2dd4a0" }}>Pro</span></span>
         </div>
-        <button onClick={() => setChatOpen(!chatOpen)} style={{ height: 28, padding: "0 8px", borderRadius: 5, background: chatOpen ? "#2dd4a0" : "#1a1b1e", border: chatOpen ? "1px solid #2dd4a0" : "1px solid #1f2937", color: chatOpen ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>💬</button>
-        <S />
+        <VSep />
 
-        {/* Device quick select */}
-        <div style={{ display: "flex", gap: 2, overflow: "auto" }}>
-          {Object.entries(D).filter(([k]) => ["i15p","i16pro","ise","px9","gs24","ipad","d1440"].includes(k)).map(([k, d]) =>
-            <Chip key={k} active={k === did} onClick={() => setDid(k)}>{d.n}</Chip>
-          )}
-          <Chip onClick={() => setPanel(panel === "devices" ? null : "devices")} accent>All ▾</Chip>
+        {/* Device */}
+        <div style={{ display: "flex", gap: 2, overflow: "hidden", flexShrink: 0 }}>
+          {Object.entries(DEVS).map(([k, v]) => (
+            <Chip key={k} active={k === did} onClick={() => setDid(k)}>{v.n.split(" ").slice(-2).join(" ")}</Chip>
+          ))}
         </div>
-        <S />
+        <VSep />
 
-        {/* Browser mode */}
-        <div style={{ display: "flex", gap: 2 }}>
-          {avail.map(k => <Chip key={k} active={k === bid} onClick={() => setBid(k)}>{B[k as keyof typeof B].n}</Chip>)}
+        {/* Browser */}
+        <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+          {browsersFor(dev).map(k => (
+            <Chip key={k} active={k === bid} onClick={() => setBid(k)}>{BROWS[k].n}</Chip>
+          ))}
         </div>
+
         <div style={{ flex: 1 }} />
 
-        {/* Actions */}
-        <Tb onClick={() => fileRef.current?.click()}>📂</Tb>
-        <input ref={fileRef} type="file" accept=".tsx,.jsx,.html" onChange={onFile} style={{ display: "none" }} />
-        <Tb onClick={() => imgRef.current?.click()}>🖼️</Tb>
-        <input ref={imgRef} type="file" accept="image/*" onChange={onImg} style={{ display: "none" }} />
-        <Tb onClick={download}>💾</Tb>
-        <Tb onClick={() => setPanel(panel === "url" ? null : "url")}>🔗</Tb>
-        <Tb onClick={() => setPanel(panel === "code" ? null : "code")}>&lt;/&gt;</Tb>
-        <Tb onClick={() => {
-          const next = panel === "github" ? null : "github";
-          setPanel(next);
-          if (next === "github" && ghToken) ghFetchRepos();
-        }}>⬆️</Tb>
-        <button onClick={() => {
-          const next = !inspectMode;
-          setInspectMode(next);
-          // Only prompt GitHub if in live URL mode with no blob preview
-          if (next && liveUrl && !htmlPreview) {
-            setPanel("github");
-          }
-        }} style={{ height: 28, padding: "0 10px", borderRadius: 5, background: inspectMode ? "#f97316" : "#1a1b1e", border: inspectMode ? "1px solid #f97316" : "1px solid #1f2937", color: inspectMode ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-          {inspectMode ? "👆 INSPECT" : "🖱️ BROWSE"}
-        </button>
-        <S />
-        <Tb onClick={() => { const cur = zoom > 0 ? zoom : autoScale; setZoom(Math.min(2, cur + 0.1)); }}>+</Tb>
-        <span style={{ fontSize: 9, color: "#9ca3af", minWidth: 30, textAlign: "center" }}>{Math.round((zoom > 0 ? zoom : autoScale) * 100)}%</span>
-        <Tb onClick={() => { const cur = zoom > 0 ? zoom : autoScale; setZoom(Math.max(0.15, cur - 0.1)); }}>-</Tb>
-        <Tb onClick={() => setZoom(0)}>↺</Tb>
-        <S />
-        <button onClick={() => setF2Open(!f2Open)} style={{ height: 28, padding: "0 8px", borderRadius: 5, background: f2Open ? "#2dd4a0" : "#1a1b1e", border: f2Open ? "1px solid #2dd4a0" : "1px solid #1f2937", color: f2Open ? "#000" : "#e5e7eb", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
-          {f2Open ? "📱📱" : "📱+"}
-        </button>
-        <span style={{ fontSize: 9, color: saveStatus === "saved" ? "#2dd4a0" : "#f59e0b" }}>●</span>
-        {converting && <span style={{ fontSize: 9, color: "#7c3aed", fontWeight: 700 }}>⚙ Converting...</span>}
-        {saveStatus === "saving" && ghPath && <span style={{ fontSize: 9, color: "#f59e0b", fontWeight: 700 }}>↑ Writing back...</span>}
-        {pushSt && <span style={{ fontSize: 9, color: pushSt.includes("✗") ? "#f87171" : "#2dd4a0" }}>{pushSt}</span>}
-      </div>
+        {/* Save status */}
+        {saveStatus === "saving" && <span style={{ fontSize: 9, color: "#f59e0b", flexShrink: 0 }}>↑ saving...</span>}
+        {pushMsg && <span style={{ fontSize: 9, color: pushMsg.startsWith("✗") ? "#f87171" : "#2dd4a0", flexShrink: 0 }}>{pushMsg}</span>}
 
-      {/* ═══ COLOR SWATCHES BAR ═══ */}
-      {swatches.length > 0 && <div style={{ flexShrink: 0, height: 32, background: "#08090a", borderBottom: "1px solid #111318", display: "flex", alignItems: "center", padding: "0 12px", gap: 4, overflow: "auto" }}>
-        <span style={{ fontSize: 8, color: "#4b5563", fontWeight: 700, marginRight: 4, flexShrink: 0 }}>COLORS</span>
-        {swatches.map((c, i) => (
-          <button key={i} onClick={() => {
-            if (sel && activeSwatch !== c) { applyStyle("color", c); setActiveSwatch(c); }
-            else if (sel) { applyStyle("backgroundColor", c); setActiveSwatch(null); }
-          }} style={{ width: 22, height: 22, borderRadius: 4, background: c, border: activeSwatch === c ? "2px solid #fff" : "1px solid #333", cursor: "pointer", flexShrink: 0 }} title={c} />
-        ))}
-        <button onClick={() => setSwatches([])} style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", fontSize: 8, marginLeft: 4 }}>clear</button>
-      </div>}
+        <VSep />
 
-      {/* ═══ INFO BAR ═══ */}
-      <div style={{ flexShrink: 0, height: 24, background: "#08090a", borderBottom: "1px solid #111318", display: "flex", alignItems: "center", padding: "0 12px", gap: 10, fontSize: 9, color: "#4b5563" }}>
-        <span style={{ fontWeight: 700, color: inspectMode ? "#f97316" : "#2dd4a0" }}>{inspectMode ? "INSPECT" : "BROWSE"}</span>
-        {htmlPreview && <span style={{ color: "#2dd4a0", fontWeight: 600, fontSize: 8 }}>✓ BLOB</span>}
-        {liveUrl && !htmlPreview && <span style={{ color: "#f59e0b", fontWeight: 600 }}>LIVE</span>}
-        {inspectMode && liveUrl && !htmlPreview && <span style={{ color: "#f97316", fontWeight: 700, fontSize: 8 }}>⚠ CROSS-ORIGIN — Pull file to edit</span>}
-        <span style={{ fontWeight: 600, color: "#9ca3af" }}>{dev.n}</span>
-        <span>{dev.w}x{dev.h}</span>
+        {/* Inspect toggle */}
+        <button
+          onClick={() => setInspect(v => !v)}
+          style={{ height: 28, padding: "0 10px", borderRadius: 5, background: inspect ? "#f97316" : "#18181b", border: inspect ? "none" : "1px solid #27272a", color: inspect ? "#000" : "#a1a1aa", fontSize: 9, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+        >
+          {inspect ? "👆 INSPECT" : "🖱 BROWSE"}
+        </button>
+
+        {/* GitHub panel toggle */}
+        <button
+          onClick={() => setRightPanel(p => p === "github" ? null : "github")}
+          style={{ height: 28, padding: "0 10px", borderRadius: 5, background: rightPanel === "github" ? "#27272a" : "#18181b", border: "1px solid #27272a", color: "#e5e7eb", fontSize: 9, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}
+        >
+          ⬆ GitHub
+        </button>
+        <VSep />
+
+        {/* Zoom */}
+        <IconBtn onClick={() => setManualZoom(z => Math.min(2, parseFloat(((z > 0 ? z : displayScale) + 0.05).toFixed(2))))}>+</IconBtn>
+        <span style={{ fontSize: 9, color: "#71717a", minWidth: 28, textAlign: "center", flexShrink: 0 }}>{Math.round(displayScale * 100)}%</span>
+        <IconBtn onClick={() => setManualZoom(z => Math.max(0.1, parseFloat(((z > 0 ? z : displayScale) - 0.05).toFixed(2))))}>−</IconBtn>
+        <IconBtn onClick={() => setManualZoom(0)}>↺</IconBtn>
+      </header>
+
+      {/* ── SWATCHES BAR ── */}
+      {swatches.length > 0 && (
+        <div style={{ flexShrink: 0, height: 28, background: "#09090b", borderBottom: "1px solid #18181b", display: "flex", alignItems: "center", gap: 3, padding: "0 12px", overflow: "auto" }}>
+          <span style={{ fontSize: 8, color: "#52525b", fontWeight: 700, marginRight: 4, flexShrink: 0 }}>COLORS</span>
+          {swatches.map((c, i) => (
+            <button key={i} title={c} onClick={() => sel && applyStyle("color", c)}
+              style={{ width: 18, height: 18, borderRadius: 3, background: c, border: "1px solid #27272a", cursor: "pointer", flexShrink: 0 }} />
+          ))}
+          <button onClick={() => setSwatches([])} style={{ background: "none", border: "none", color: "#52525b", cursor: "pointer", fontSize: 8, marginLeft: 4, flexShrink: 0 }}>clear</button>
+        </div>
+      )}
+
+      {/* ── INFO BAR ── */}
+      <div style={{ flexShrink: 0, height: 20, background: "#09090b", borderBottom: "1px solid #18181b", display: "flex", alignItems: "center", gap: 10, padding: "0 12px", fontSize: 8, color: "#52525b" }}>
+        <span style={{ fontWeight: 700, color: inspect ? "#f97316" : "#3f3f46" }}>{inspect ? "INSPECT" : "BROWSE"}</span>
+        <span style={{ color: "#71717a" }}>{dev.n}</span>
+        <span>{dev.w}×{dev.h}</span>
         <span>Vis:{visH}px</span>
-        <span>Safe:{safeH}px</span>
-        {overflow > 0 && <span style={{ color: "#ef4444" }}>100vh +{overflow}px</span>}
-        <div style={{ flex: 1 }} />
-        <label style={{ display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
-          <input type="checkbox" checked={zones} onChange={e => setZones(e.target.checked)} style={{ accentColor: "#ef4444", width: 10, height: 10 }} />
-          <span style={{ color: zones ? "#ef4444" : "#4b5563" }}>Zones</span>
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
-          <input type="checkbox" checked={measures} onChange={e => setMeasures(e.target.checked)} style={{ accentColor: "#f97316", width: 10, height: 10 }} />
-          Px
-        </label>
-        <button onClick={() => setPanel(panel === "warnings" ? null : "warnings")} style={{ background: "none", border: "none", color: "#f97316", cursor: "pointer", fontSize: 9 }}>
-          ⚠ {deviceWarnings.length}
-        </button>
+        {proxyUrl && <span style={{ color: "#2dd4a0", fontWeight: 700 }}>PROXY → {proxyUrl.replace("https://", "")}</span>}
+        {tsxSrc && <span style={{ color: "#7c3aed" }}>TSX: {ghPath.split("/").pop()}</span>}
       </div>
 
-      {/* ═══ MAIN ═══ */}
+      {/* ── BODY ── */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-        {/* ═══ LEFT: CHAT / BROWSER PANEL ═══ */}
-        <div style={{ width: chatOpen ? 420 : 0, flexShrink: 0, background: "#0a0b0d", borderRight: chatOpen ? "1px solid #1f2937" : "none", display: "flex", flexDirection: "column", overflow: "hidden", transition: "width 0.2s" }}>
-          {chatOpen && <>
-            <div style={{ flexShrink: 0, height: 32, background: "#0c0d0f", borderBottom: "1px solid #1f2937", display: "flex", alignItems: "center", padding: "0 8px", gap: 4 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#2dd4a0" }}>Claude Chat</span>
-              <div style={{ flex: 1 }} />
-              <button onClick={() => setChatOpen(false)} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 12 }}>x</button>
+        {/* ── CANVAS ── */}
+        <div ref={wrapRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#050607", position: "relative" }}>
+          {!hasContent && (
+            <div style={{ textAlign: "center", color: "#3f3f46", userSelect: "none" }}>
+              <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.3 }}>◎</div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: "#52525b" }}>Open GitHub → Pull a file</p>
+              <p style={{ fontSize: 11, color: "#3f3f46", marginTop: 6, lineHeight: 1.6 }}>
+                The live page loads via server proxy<br />Same-origin · Fully inspectable
+              </p>
             </div>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div style={{ flex: 1, overflow: "auto", padding: 8 }}>
-                {chatMessages.map((m, i) => (
-                  <div key={i} style={{ marginBottom: 8, display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
-                    <div style={{ maxWidth: "85%", padding: "8px 12px", borderRadius: 12, background: m.role === "user" ? "#2dd4a0" : "#1f2937", color: m.role === "user" ? "#000" : "#e5e7eb", fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                      {m.content}
+          )}
+
+          {hasContent && (
+            <div style={{ transform: `scale(${displayScale})`, transformOrigin: "center center", flexShrink: 0, transition: "transform 150ms ease" }}>
+              {/* Phone shell */}
+              <div style={{ position: "relative", width: dev.w + 2, borderRadius: dev.r, overflow: "hidden", boxShadow: "0 0 0 1px #27272a, 0 30px 90px rgba(0,0,0,.8)", background: "#0a0a0a" }}>
+                {/* Top chrome */}
+                {brw.tc > 0 && (
+                  <div style={{ height: brw.tc, background: "#18181b", borderBottom: "1px solid #27272a", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 5 }}>
+                    <div style={{ width: dev.w * 0.6, height: 22, background: "#0a0a0a", borderRadius: 11, border: "1px solid #27272a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#52525b", gap: 4 }}>
+                      🔒 {proxyUrl ? new URL(proxyUrl).hostname : "preview"}
                     </div>
-                  </div>
-                ))}
-                {chatLoading && <div style={{ fontSize: 10, color: "#6b7280", padding: 4 }}>Thinking...</div>}
-              </div>
-              <div style={{ flexShrink: 0, padding: 8, borderTop: "1px solid #1f2937", display: "flex", gap: 4 }}>
-                <input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Ask Claude..." onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }}} style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 11, outline: "none" }} />
-                <button onClick={sendChat} disabled={chatLoading} style={{ padding: "8px 12px", borderRadius: 8, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Send</button>
-              </div>
-            </div>
-          </>}
-        </div>
-
-        {/* ═══ DEVICE PREVIEW (now on right side) ═══ */}
-        <div ref={containerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "auto", background: "#050607", transition: "all 0.2s" }}>
-          <div style={{ transform: `scale(${zoom > 0 ? zoom : autoScale})`, transformOrigin: "center center", transition: "transform 0.15s" }}>
-            <div style={{ width: dev.w + 2, position: "relative", borderRadius: dev.r, overflow: "hidden", boxShadow: "0 0 0 1px #1f2937, 0 25px 80px rgba(0,0,0,0.6)", background: "#000" }}>
-
-              {/* Top chrome */}
-              {brw.tc > 0 && <div style={{ height: brw.tc, background: "#1a1b1e", borderBottom: "1px solid #333", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 6 }}>
-                <div style={{ width: dev.w * 0.65, height: 22, background: "#111318", borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#6b7280", gap: 3 }}>🔒 patient.medazonhealth.com</div>
-              </div>}
-
-              {/* Content */}
-              <div style={{ width: dev.w, height: visH, position: "relative" }}>
-                <iframe ref={iframeRef} style={{ width: dev.w, height: visH, border: "none", display: "block", pointerEvents: inspectMode ? "none" : "auto" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation" />
-                {/* Converting overlay */}
-                {converting && (
-                  <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, zIndex: 10 }}>
-                    <div style={{ width: 24, height: 24, border: "2px solid #7c3aed", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                    <p style={{ fontSize: 11, color: "#a78bfa", fontWeight: 600 }}>Converting TSX → visual preview...</p>
-                    <p style={{ fontSize: 9, color: "#6b7280", textAlign: "center", maxWidth: 200 }}>Claude is rendering your component for visual editing</p>
                   </div>
                 )}
-                {/* Inspect overlay — blocks iframe clicks, captures position */}
-                {inspectMode && <div style={{ position: "absolute", inset: 0, cursor: liveUrl ? "default" : "crosshair", zIndex: 5 }}
-                  onClick={(e) => {
-                    if (liveUrl) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    // Overlay is inside the scaled div — divide by scale to get iframe coords
-                    const scale = zoom > 0 ? zoom : autoScale;
-                    const x = (e.clientX - rect.left) / scale;
-                    const y = (e.clientY - rect.top) / scale;
-                    try {
-                      const doc = iframeRef.current?.contentDocument;
-                      if (doc) {
-                        const el = doc.elementFromPoint(x, y);
-                        if (el) {
-                          const cs = getComputedStyle(el);
-                          const r = el.getBoundingClientRect();
-                          setSel({
-                            type: "sel", tag: el.tagName.toLowerCase(),
-                            txt: (el.textContent || "").slice(0, 100),
-                            rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
-                            sty: {
-                              color: cs.color, backgroundColor: cs.backgroundColor,
-                              fontSize: cs.fontSize, fontWeight: cs.fontWeight, fontFamily: cs.fontFamily,
-                              textAlign: cs.textAlign, lineHeight: cs.lineHeight, letterSpacing: cs.letterSpacing,
-                              paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, paddingLeft: cs.paddingLeft, paddingRight: cs.paddingRight,
-                              marginTop: cs.marginTop, marginBottom: cs.marginBottom,
-                              width: cs.width, height: cs.height, maxWidth: cs.maxWidth,
-                              border: cs.border, borderRadius: cs.borderRadius, boxShadow: cs.boxShadow,
-                              display: cs.display, position: cs.position, flexDirection: cs.flexDirection,
-                              justifyContent: cs.justifyContent, alignItems: cs.alignItems, gap: cs.gap,
-                              overflow: cs.overflow, opacity: cs.opacity, background: cs.background,
-                            },
-                            _el: el,
-                          });
-                          setPanel("props");
-                          const colors = new Set(swatches);
-                          [cs.color, cs.backgroundColor].forEach(c => {
-                            if (c && c !== "transparent" && !c.includes("0, 0, 0, 0")) colors.add(rgb2hex(c));
-                          });
-                          setSwatches(Array.from(colors).filter(c => c !== "transparent").slice(0, 30));
-                        }
-                      }
-                    } catch {
-                      // Should not hit this since liveUrl guard above handles it
-                    }
-                  }}
-                  onMouseMove={(e) => {
-                    if (liveUrl) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const scale = zoom > 0 ? zoom : autoScale;
-                    const x = (e.clientX - rect.left) / scale;
-                    const y = (e.clientY - rect.top) / scale;
-                    try {
-                      const doc = iframeRef.current?.contentDocument;
-                      if (doc) {
-                        // Highlight hovered element
-                        doc.querySelectorAll("[data-ep-hover]").forEach((el: Element) => {
-                          (el as HTMLElement).style.outline = "";
-                          (el as HTMLElement).removeAttribute("data-ep-hover");
-                        });
-                        const el = doc.elementFromPoint(x, y) as HTMLElement | null;
-                        if (el && el.id !== "root") {
-                          el.style.outline = "2px solid rgba(249,115,22,0.6)";
-                          el.setAttribute("data-ep-hover", "1");
-                        }
-                      }
-                    } catch { /* ignore */ }
-                  }}
-                  onMouseLeave={() => {
-                    if (liveUrl) return;
-                    try {
-                      const doc = iframeRef.current?.contentDocument;
-                      doc?.querySelectorAll("[data-ep-hover]").forEach((el: Element) => {
-                        (el as HTMLElement).style.outline = "";
-                        (el as HTMLElement).removeAttribute("data-ep-hover");
-                      });
-                    } catch { /* ignore */ }
-                  }}
-                >
-                  {/* Cross-origin banner — shown when live URL is loaded */}
-                  {liveUrl && (
-                    <div style={{
-                      position: "absolute", inset: 0, display: "flex", flexDirection: "column",
-                      alignItems: "center", justifyContent: "center", gap: 12,
-                      background: "rgba(0,0,0,0.85)", backdropFilter: "blur(4px)",
-                    }}>
-                      <div style={{ fontSize: 28 }}>✏️</div>
-                      <div style={{ textAlign: "center", padding: "0 20px" }}>
-                        <p style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 6 }}>Pull file to edit</p>
-                        <p style={{ fontSize: 10, color: "#6b7280", lineHeight: 1.6 }}>
-                          Live URLs are cross-origin and can&apos;t be inspected directly.<br />
-                          Pull the file from GitHub to enable click-to-edit.
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => { setPanel("github"); if (ghToken) ghFetchRepos(); }}
-                        style={{
-                          padding: "8px 16px", borderRadius: 6, background: "#f97316",
-                          color: "#000", fontWeight: 700, fontSize: 11, border: "none", cursor: "pointer",
-                        }}
-                      >
-                        Open GitHub Panel →
-                      </button>
-                      <button
-                        onClick={() => { setLiveUrl(""); setInspectMode(true); }}
-                        style={{
-                          padding: "6px 12px", borderRadius: 6, background: "transparent",
-                          color: "#6b7280", fontWeight: 600, fontSize: 10,
-                          border: "1px solid #374151", cursor: "pointer",
-                        }}
-                      >
-                        Use HTML preview instead
-                      </button>
+                {/* Viewport */}
+                <div style={{ width: dev.w, height: visH, position: "relative", background: "#111" }}>
+                  <iframe
+                    ref={iframeRef}
+                    title="EditorPro Preview"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                    style={{ width: dev.w, height: visH, border: "none", display: "block", pointerEvents: inspect ? "none" : "auto" }}
+                  />
+                  {/* Inspect overlay */}
+                  {inspect && (
+                    <div
+                      style={{ position: "absolute", inset: 0, cursor: "crosshair", zIndex: 5 }}
+                      onClick={handleOverlayClick}
+                      onMouseMove={handleOverlayMove}
+                      onMouseLeave={handleOverlayLeave}
+                    />
+                  )}
+                  {/* Loading spinner */}
+                  {loading && (
+                    <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.8)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, zIndex: 20 }}>
+                      <div style={{ width: 24, height: 24, border: "2px solid #2dd4a0", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.75s linear infinite" }} />
+                      <span style={{ fontSize: 11, color: "#2dd4a0", fontWeight: 600 }}>Loading via proxy…</span>
                     </div>
                   )}
-                </div>}
-
-                {/* SAFE ZONES */}
-                {zones && <>
-                  {et > 0 && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: et, background: "rgba(239,68,68,0.12)", borderBottom: "1px dashed rgba(239,68,68,0.4)", pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {measures && <Tag c="rgba(239,68,68,0.9)">↕{et}px UNSAFE</Tag>}
-                    {dev.di ? <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)", width: 126, height: 36, borderRadius: 20, background: "rgba(0,0,0,0.7)", border: "1px solid rgba(239,68,68,0.2)" }} /> : null}
-                  </div>}
-                  {eb > 0 && <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: eb, background: "rgba(239,68,68,0.12)", borderTop: "1px dashed rgba(239,68,68,0.4)", pointerEvents: "none", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {measures && <Tag c="rgba(239,68,68,0.9)">↕{eb}px UNSAFE</Tag>}
-                    {dev.sb > 0 && <div style={{ position: "absolute", bottom: 6, left: "50%", transform: "translateX(-50%)", width: 134, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.12)" }} />}
-                  </div>}
-                  {measures && et > 0 && <div style={{ position: "absolute", top: et, left: 0, right: 0, pointerEvents: "none", display: "flex", justifyContent: "center" }}><Tag c="#2dd4a0">── SAFE ──</Tag></div>}
-                  {measures && eb > 0 && <div style={{ position: "absolute", bottom: eb, left: 0, right: 0, pointerEvents: "none", display: "flex", justifyContent: "center" }}><Tag c="#2dd4a0">── SAFE ──</Tag></div>}
-                </>}
-
-                {/* Selected element highlight */}
-                {sel && sel.rect && <div style={{ position: "absolute", left: sel.rect.x, top: sel.rect.y, width: sel.rect.w, height: sel.rect.h, border: "2px solid #f97316", borderRadius: 2, pointerEvents: "none", boxShadow: "0 0 12px rgba(249,115,22,0.3)" }}>
-                  {measures && <span style={{ position: "absolute", top: -16, left: 0, fontSize: 8, color: "#f97316", fontFamily: "monospace", background: "rgba(0,0,0,0.8)", padding: "1px 4px", borderRadius: 2, whiteSpace: "nowrap" }}>{sel.rect.w}×{sel.rect.h}</span>}
-                </div>}
-
-                {/* Device dimensions */}
-                {measures && <>
-                  <div style={{ position: "absolute", bottom: -14, left: "50%", transform: "translateX(-50%)", fontSize: 8, color: "#374151", fontFamily: "monospace", pointerEvents: "none" }}>{dev.w}px</div>
-                  <div style={{ position: "absolute", top: "50%", right: -26, transform: "translateY(-50%) rotate(90deg)", fontSize: 8, color: "#374151", fontFamily: "monospace", pointerEvents: "none", whiteSpace: "nowrap" }}>{visH}px</div>
-                </>}
+                </div>
+                {/* Bottom chrome */}
+                {brw.bc > 0 && (
+                  <div style={{ height: brw.bc, background: "#18181b", borderTop: "1px solid #27272a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ width: 120, height: 4, borderRadius: 2, background: "rgba(255,255,255,.1)" }} />
+                  </div>
+                )}
               </div>
-
-              {/* Bottom chrome */}
-              {brw.bc > 0 && <div style={{ height: brw.bc, background: "#1a1b1e", borderTop: "1px solid #333", display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
-                {brw.bc >= 44 ? <>
-                  <span style={{ fontSize: 9, color: "#555" }}>◀</span><span style={{ fontSize: 9, color: "#555" }}>▶</span>
-                  <span style={{ fontSize: 9, color: "#555" }}>⬆</span><span style={{ fontSize: 9, color: "#555" }}>📑</span>
-                </> : <div style={{ width: 134, height: 5, borderRadius: 3, background: "rgba(255,255,255,0.12)" }} />}
-              </div>}
             </div>
-          </div>
+          )}
         </div>
 
-        {/* ═══ RIGHT PANEL (slide-out) ═══ */}
-        {panel && (
-          <div style={{ width: 320, flexShrink: 0, background: "#0a0b0d", borderLeft: "1px solid #1f2937", display: "flex", flexDirection: "column", overflow: "hidden", animation: "slideIn 0.15s ease" }}>
+        {/* ── RIGHT PANEL ── */}
+        {rightPanel && (
+          <aside style={{ width: 300, flexShrink: 0, background: "#09090b", borderLeft: "1px solid #18181b", display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {/* Panel header */}
-            <div style={{ flexShrink: 0, height: 36, background: "#0c0d0f", borderBottom: "1px solid #1f2937", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px" }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#f97316" }}>
-                {panel === "props" ? "Properties" : panel === "devices" ? "Devices" : panel === "warnings" ? "Warnings" : panel === "code" ? "Code" : panel === "image" ? "Image AI" : panel === "url" ? "Load URL" : "GitHub"}
+            <div style={{ flexShrink: 0, height: 36, background: "#0c0c0e", borderBottom: "1px solid #18181b", display: "flex", alignItems: "center", padding: "0 12px", gap: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: rightPanel === "github" ? "#2dd4a0" : "#f97316" }}>
+                {rightPanel === "github" ? "GitHub" : "Properties"}
               </span>
-              <button onClick={() => { setPanel(null); setSel(null); }} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 14 }}>✕</button>
+              <div style={{ flex: 1 }} />
+              {rightPanel === "props" && (
+                <button onClick={() => setRightPanel("github")} style={{ background: "none", border: "none", color: "#52525b", cursor: "pointer", fontSize: 9, padding: "2px 6px" }}>⬆ GitHub</button>
+              )}
+              <button onClick={() => { setRightPanel(null); setSel(null); }} style={{ background: "none", border: "none", color: "#52525b", cursor: "pointer", fontSize: 16, lineHeight: 1 }}>×</button>
             </div>
 
             {/* Panel content */}
             <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
 
-              {/* PROPERTIES */}
-              {panel === "props" && sel && <>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
-                  <span style={{ background: "#f97316", color: "#000", fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3 }}>&lt;{sel.tag}&gt;</span>
-                  <span style={{ fontSize: 10, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{sel.txt}</span>
-                </div>
-                {sel.rect && <div style={{ background: "#111318", borderRadius: 6, padding: 8, border: "1px solid #1f2937", marginBottom: 10, display: "flex", gap: 12, fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>
-                  <span>x:{sel.rect.x}</span><span>y:{sel.rect.y}</span><span>w:{sel.rect.w}</span><span>h:{sel.rect.h}</span>
-                </div>}
-                {/* Editable text */}
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 9, color: "#4b5563", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Content</div>
-                  <input value={sel.txt || ""} onChange={e => applyText(e.target.value)} style={{ width: "100%", background: "#111318", border: "1px solid #1f2937", borderRadius: 5, padding: "6px 8px", fontSize: 11, color: "#e5e7eb", fontFamily: "monospace", outline: "none" }} />
-                </div>
-                {styleGroups.map((g, gi) => (
-                  <div key={gi} style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 9, color: "#4b5563", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{g.label}</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      {g.items.filter(i => i.v && i.v !== "none" && i.v !== "normal" && i.v !== "0px" && i.v !== "auto" && i.v !== "static" && i.v !== "visible" && i.v !== "transparent" && !i.v.includes("0, 0, 0, 0")).map((item, ii) => (
-                        <div key={ii} style={{ display: "flex", alignItems: "center", gap: 6, background: "#111318", borderRadius: 5, padding: "5px 8px", border: "1px solid #1f2937" }}>
-                          {/* Color picker */}
-                          {item.type === "color" && <div style={{ width: 22, height: 22, borderRadius: 4, background: item.v, border: "1px solid #333", flexShrink: 0, cursor: "pointer", position: "relative", overflow: "hidden" }}>
-                            <input type="color" value={rgb2hex(item.v)} onChange={e => applyStyle(item.k, e.target.value)} style={{ position: "absolute", inset: -4, opacity: 0, cursor: "pointer", width: "140%", height: "140%" }} />
-                          </div>}
-                          <span style={{ fontSize: 8, color: "#6b7280", minWidth: 55, flexShrink: 0 }}>{item.k.replace(/([A-Z])/g, '-$1').toLowerCase()}</span>
-                          {/* Size slider + input */}
-                          {item.type === "size" && <>
-                            <input type="range" min={0} max={100} step={1} value={parseFloat(item.v) || 0} onChange={e => applyStyle(item.k, e.target.value + "px")} style={{ flex: 1, accentColor: "#f97316", height: 3, cursor: "pointer" }} />
-                            <input value={item.v} onChange={e => applyStyle(item.k, e.target.value)} style={{ width: 52, background: "#0a0b0d", border: "1px solid #1f2937", borderRadius: 3, padding: "2px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none", textAlign: "right" }} />
-                          </>}
-                          {/* Select dropdown */}
-                          {item.type === "select" && <select value={item.v} onChange={e => applyStyle(item.k, e.target.value)} style={{ flex: 1, background: "#0a0b0d", border: "1px solid #1f2937", borderRadius: 3, padding: "3px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none", cursor: "pointer" }}>
-                            {item.opts?.map(o => <option key={o} value={o}>{o}</option>)}
-                          </select>}
-                          {/* Text input */}
-                          {item.type === "text" && <input value={item.v} onChange={e => applyStyle(item.k, e.target.value)} style={{ flex: 1, background: "#0a0b0d", border: "1px solid #1f2937", borderRadius: 3, padding: "2px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none" }} />}
-                          {/* Color text input alongside picker */}
-                          {item.type === "color" && <input value={rgb2hex(item.v)} onChange={e => applyStyle(item.k, e.target.value)} style={{ flex: 1, background: "#0a0b0d", border: "1px solid #1f2937", borderRadius: 3, padding: "2px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none" }} />}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </>}
+              {/* ── GITHUB ── */}
+              {rightPanel === "github" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <Field label="GitHub Token">
+                    <input type="password" value={ghToken} onChange={e => setGhToken(e.target.value)} placeholder="ghp_..." style={inputSty} />
+                  </Field>
 
-              {/* DEVICES */}
-              {panel === "devices" && <>
-                {["ios", "and", "tab", "desk"].map(cat => (
-                  <div key={cat} style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 9, color: "#4b5563", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{cat === "ios" ? "iPhone" : cat === "and" ? "Android" : cat === "tab" ? "Tablet" : "Desktop"}</div>
-                    {Object.entries(D).filter(([, d]) => d.c === cat).map(([k, d]) => (
-                      <button key={k} onClick={() => { setDid(k); setPanel(null); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "6px 8px", borderRadius: 6, background: k === did ? "#1f2937" : "transparent", border: k === did ? "1px solid #f97316" : "1px solid transparent", cursor: "pointer", marginBottom: 2, textAlign: "left" }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: k === did ? "#fff" : "#9ca3af" }}>{d.n}</div>
-                          <div style={{ fontSize: 9, color: "#4b5563" }}>{d.w}×{d.h} · ↑{d.st} ↓{d.sb}{d.di ? " · DI" : ""}</div>
-                        </div>
+                  <Field label="Repo">
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <select value={ghRepo} onChange={e => { setGhRepo(e.target.value); setGhFiles([]); }} style={{ ...inputSty, flex: 1 }}>
+                        <option value="">{ghBusy ? "Loading…" : ghRepos.length === 0 ? "Click ↻ to load" : "Select…"}</option>
+                        {ghRepos.map(r => <option key={r.full_name} value={r.full_name}>{r.full_name}</option>)}
+                      </select>
+                      <button onClick={fetchRepos} style={{ ...secBtnSty, padding: "0 10px", fontSize: 13 }}>↻</button>
+                    </div>
+                  </Field>
+
+                  <Field label="Branch">
+                    <input value={ghBranch} onChange={e => setGhBranch(e.target.value)} style={inputSty} />
+                  </Field>
+
+                  <Field label="File">
+                    <select value={ghPath} onChange={e => setGhPath(e.target.value)} style={inputSty}>
+                      <option value="">Select file…</option>
+                      {ghFiles.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                  </Field>
+
+                  {/* Status badge */}
+                  <div style={{ padding: "8px 10px", borderRadius: 6, background: tsxSrc ? "rgba(45,212,160,.06)" : "rgba(249,115,22,.06)", border: `1px solid ${tsxSrc ? "rgba(45,212,160,.15)" : "rgba(249,115,22,.15)"}`, fontSize: 9, color: tsxSrc ? "#2dd4a0" : "#f97316", lineHeight: 1.5 }}>
+                    {tsxSrc
+                      ? `✓ ${ghPath.split("/").pop()} pulled — proxy rendering live page`
+                      : "Select a file and click Pull ✦ to load for visual editing"}
+                  </div>
+
+                  {/* Action buttons */}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={pull} disabled={!ghPath || loading}
+                      style={{ flex: 1, padding: "9px 0", borderRadius: 6, background: !ghPath || loading ? "#27272a" : "#2dd4a0", color: !ghPath || loading ? "#52525b" : "#000", fontWeight: 700, fontSize: 11, border: "none", cursor: "pointer", transition: "all 150ms" }}>
+                      {loading ? "Loading…" : "Pull ✦"}
+                    </button>
+                    <button onClick={push} disabled={!tsxSrc}
+                      style={{ flex: 1, padding: "9px 0", borderRadius: 6, background: tsxSrc ? "#f97316" : "#27272a", color: tsxSrc ? "#fff" : "#52525b", fontWeight: 700, fontSize: 11, border: "none", cursor: "pointer", transition: "all 150ms" }}>
+                      Push →
+                    </button>
+                  </div>
+
+                  {/* Quick-pull shortcuts */}
+                  <div style={{ borderTop: "1px solid #18181b", paddingTop: 10 }}>
+                    <div style={{ fontSize: 8, color: "#3f3f46", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Quick Pull</div>
+                    {Object.entries(KNOWN).map(([path, url]) => (
+                      <button key={path} onClick={() => setGhPath(path)}
+                        style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "7px 10px", borderRadius: 5, background: ghPath === path ? "#18181b" : "transparent", border: `1px solid ${ghPath === path ? "#27272a" : "transparent"}`, cursor: "pointer", marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, color: ghPath === path ? "#e5e7eb" : "#71717a", fontWeight: 600 }}>{path.split("/").pop()}</span>
+                        <span style={{ fontSize: 8, color: "#3f3f46" }}>{url.replace("https://", "")}</span>
                       </button>
                     ))}
                   </div>
-                ))}
-              </>}
-
-              {/* WARNINGS */}
-              {panel === "warnings" && deviceWarnings.map((w, i) => (
-                <div key={i} style={{ background: "#111318", borderRadius: 6, padding: 8, border: `1px solid ${sc[w.s as keyof typeof sc]}33`, marginBottom: 6 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: sc[w.s as keyof typeof sc], textTransform: "uppercase" }}>{w.s}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#e5e7eb" }}>{w.t}</span>
-                  </div>
-                  <p style={{ fontSize: 10, color: "#6b7280", marginBottom: 4 }}>{w.d}</p>
-                  <p style={{ fontSize: 9, color: "#2dd4a0" }}>Fix: {w.f}</p>
-                </div>
-              ))}
-
-              {/* CODE */}
-              {/* CODE — Monaco */}
-              {panel === "code" && <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 160px)" }}>
-                <div ref={monacoContainerRef} style={{ flex: 1, minHeight: 300 }} />
-                {!monacoLoaded && <textarea value={code} onChange={e => setCode(e.target.value)} spellCheck={false}
-                  style={{ width: "100%", flex: 1, minHeight: 300, background: "#08090a", color: "#e5e7eb", border: "1px solid #1f2937", borderRadius: 6, padding: 10, fontSize: 12, fontFamily: "monospace", resize: "none", outline: "none", lineHeight: 1.5 }} />}
-              </div>}
-
-              {/* URL — kept for standalone use */}
-              {panel === "url" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <p style={{ fontSize: 10, color: "#9ca3af" }}>Load a live page into the device frame. This is independent of the code editor.</p>
-                <input value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="patient.medazonhealth.com" onKeyDown={e => e.key === "Enter" && loadUrl()} style={{ width: "100%", padding: "7px 9px", borderRadius: 5, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 11, fontFamily: "monospace", outline: "none" }} />
-                <button onClick={loadUrl} style={{ padding: "8px", borderRadius: 5, background: "#2dd4a0", color: "#000", fontWeight: 700, fontSize: 11, border: "none", cursor: "pointer" }}>Load URL</button>
-                {liveUrl && <button onClick={() => { setLiveUrl(""); setPanel(null); }} style={{ padding: "6px", borderRadius: 5, background: "#1a1b1e", color: "#e5e7eb", fontSize: 10, border: "1px solid #1f2937", cursor: "pointer" }}>Clear URL</button>}
-                <div style={{ fontSize: 9, color: "#4b5563", marginTop: 4 }}>
-                  {["patient.medazonhealth.com/express-checkout","patient.medazonhealth.com","doctor.medazonhealth.com"].map(u =>
-                    <button key={u} onClick={() => { setLiveUrl("https://"+u); setPanel(null); }} style={{ display: "block", background: "none", border: "none", color: "#2dd4a0", cursor: "pointer", fontSize: 9, padding: "2px 0" }}>{u}</button>
-                  )}
-                </div>
-              </div>}
-
-              {/* IMAGE AI */}
-              {panel === "image" && (imgAnalyzing
-                ? <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 40, gap: 8 }}>
-                    <div style={{ width: 20, height: 20, border: "2px solid #7c3aed", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                    <span style={{ fontSize: 11, color: "#6b7280" }}>Analyzing...</span>
-                  </div>
-                : imgResult?.error ? <p style={{ color: "#f87171", fontSize: 11 }}>Error: {imgResult.error}</p>
-                : imgResult ? <>
-                    {imgResult.colors?.map((c: any, i: number) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "#111318", borderRadius: 5, padding: "5px 8px", border: "1px solid #1f2937", marginBottom: 3 }}>
-                        <span style={{ width: 16, height: 16, borderRadius: 3, background: c.hex, border: "1px solid #333", flexShrink: 0 }} />
-                        <span style={{ fontSize: 10, fontFamily: "monospace", color: "#e5e7eb" }}>{c.hex}</span>
-                        <span style={{ fontSize: 9, color: "#6b7280", flex: 1 }}>{c.name}</span>
-                      </div>
-                    ))}
-                    {imgResult.typography?.map((t: any, i: number) => (
-                      <div key={i} style={{ background: "#111318", borderRadius: 5, padding: 6, border: "1px solid #1f2937", marginBottom: 3 }}>
-                        <div style={{ fontSize: 10, color: "#e5e7eb", fontWeight: 600 }}>{t.el}</div>
-                        <div style={{ fontSize: 9, color: "#6b7280", fontFamily: "monospace" }}>{t.size} / {t.weight} / {t.color}</div>
-                      </div>
-                    ))}
-                  </>
-                : <div style={{ textAlign: "center", padding: 40, color: "#4b5563" }}>
-                    <p style={{ fontSize: 28, marginBottom: 8 }}>🖼️</p>
-                    <p style={{ fontSize: 11 }}>Upload a screenshot to analyze</p>
-                  </div>
-              )}
-
-              {/* GITHUB — with file browser */}
-              {panel === "github" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <GhInp label="GitHub Token (saved)" type="password" value={ghToken} onChange={e => setGhToken(e.target.value)} ph="ghp_..." />
-                {/* Repo dropdown */}
-                <label style={{ fontSize: 9, color: "#6b7280" }}>Repo
-                  <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
-                    <select value={ghRepo} onChange={e => { setGhRepo(e.target.value); setGhBrowsePath(""); setGhFiles([]); }} style={{ flex: 1, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: ghRepo ? "#e5e7eb" : "#6b7280", fontSize: 10, outline: "none" }}>
-                      <option value="">{ghLoading ? "Loading..." : ghRepos.length === 0 ? "No repos — click ↻" : "Select repo..."}</option>
-                      {ghRepos.map((r: any) => <option key={r.full_name} value={r.full_name}>{r.full_name}</option>)}
-                    </select>
-                    <button onClick={ghFetchRepos} title="Refresh repos" style={{ padding: "0 8px", borderRadius: 4, background: "#1f2937", border: "1px solid #374151", color: "#e5e7eb", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>↻</button>
-                  </div>
-                </label>
-                <GhInp label="Branch" value={ghBranch} onChange={e => setGhBranch(e.target.value)} />
-                {/* File dropdown */}
-                <label style={{ fontSize: 9, color: "#6b7280" }}>File
-                  <select value={ghPath} onChange={e => setGhPath(e.target.value)} style={{ display: "block", width: "100%", marginTop: 2, padding: "6px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 10, outline: "none" }}>
-                    <option value="">Select file...</option>
-                    {ghFileList.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </label>
-                {/* Mode indicator */}
-                <div style={{ padding: "6px 8px", borderRadius: 4, background: htmlPreview ? "rgba(45,212,160,0.08)" : "rgba(249,115,22,0.08)", border: `1px solid ${htmlPreview ? "rgba(45,212,160,0.2)" : "rgba(249,115,22,0.2)"}`, fontSize: 9, color: htmlPreview ? "#2dd4a0" : "#f97316" }}>
-                  {htmlPreview ? "✓ Visual preview ready — click elements to edit" : liveUrl ? "⚠ Live URL mode — Pull a file to enable editing" : "↑ Pull a file to load visual preview"}
-                </div>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <button onClick={() => ghBrowse(ghBrowsePath)} style={{ flex: 1, padding: "7px", borderRadius: 5, background: "#1f2937", color: "#e5e7eb", fontWeight: 600, fontSize: 10, border: "1px solid #374151", cursor: "pointer" }}>Browse</button>
-                  <button onClick={() => { if (ghPath) ghLoadFile(ghPath); }} disabled={!ghPath || ghLoading} title="Pull file → convert to visual preview → click to edit" style={{ flex: 1, padding: "7px", borderRadius: 5, background: (!ghPath || ghLoading) ? "#374151" : "#2dd4a0", color: (!ghPath || ghLoading) ? "#9ca3af" : "#000", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>
-                    {ghLoading ? "Loading..." : "Pull ✦"}
-                  </button>
-                  <button onClick={push} disabled={!ghPath} style={{ flex: 1, padding: "7px", borderRadius: 5, background: !ghPath ? "#374151" : "#f97316", color: !ghPath ? "#9ca3af" : "#fff", fontWeight: 700, fontSize: 10, border: "none", cursor: "pointer" }}>Push</button>
-                </div>
-                {/* Live URL for browse-only mode (optional, does not affect editing) */}
-                {liveUrl && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 8px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937" }}>
-                    <span style={{ fontSize: 8, color: "#6b7280", flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>LIVE: {liveUrl}</span>
-                    <button onClick={() => setLiveUrl("")} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 10, flexShrink: 0 }}>✕ clear</button>
-                  </div>
-                )}
-                <button onClick={download} style={{ padding: "7px", borderRadius: 5, background: "#1a1b1e", color: "#e5e7eb", fontSize: 10, border: "1px solid #1f2937", cursor: "pointer" }}>Download</button>
-                {pushSt && <span style={{ fontSize: 10, color: pushSt.includes("✗") ? "#f87171" : "#2dd4a0" }}>{pushSt}</span>}
-                {ghLoading && <p style={{ fontSize: 10, color: "#6b7280" }}>Loading...</p>}
-                {/* File tree browser */}
-                {ghFiles.length > 0 && <>
-                  <div style={{ fontSize: 8, color: "#4b5563", fontWeight: 700, textTransform: "uppercase", marginTop: 4 }}>Browse: /{ghBrowsePath}</div>
-                  {ghBrowsePath && <button onClick={() => ghBrowse(ghBrowsePath.split("/").slice(0,-1).join("/"))} style={{ background: "none", border: "none", color: "#2dd4a0", cursor: "pointer", fontSize: 9, textAlign: "left" }}>📁 ..</button>}
-                  {ghFiles.map((f: any, i: number) =>
-                    <button key={i} onClick={() => f.type === "dir" ? ghBrowse(f.path) : ghLoadFile(f.path)} style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", cursor: "pointer", textAlign: "left" }}>
-                      <span style={{ fontSize: 10 }}>{f.type === "dir" ? "📁" : "📄"}</span>
-                      <span style={{ fontSize: 10, color: "#e5e7eb", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-                      {f.size && <span style={{ fontSize: 8, color: "#4b5563" }}>{(f.size/1024).toFixed(1)}k</span>}
-                    </button>
-                  )}
-                </>}
-              </div>}
-            </div>
-          </div>
-        )}
-
-        {/* ═══ FRAME 2 — DUAL PHONE ═══ */}
-        {f2Open && (
-          <div style={{ width: 420, flexShrink: 0, background: "#08090a", borderLeft: "1px solid #1f2937", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            {/* Frame 2 toolbar */}
-            <div style={{ flexShrink: 0, height: 32, background: "#0c0d0f", borderBottom: "1px solid #1f2937", display: "flex", alignItems: "center", padding: "0 8px", gap: 4 }}>
-              <button onClick={() => setF2Mode("url")} style={{ padding: "3px 8px", borderRadius: 4, background: f2Mode === "url" ? "#1f2937" : "transparent", border: "none", color: f2Mode === "url" ? "#fff" : "#6b7280", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>URL</button>
-              <button onClick={() => setF2Mode("gen")} style={{ padding: "3px 8px", borderRadius: 4, background: f2Mode === "gen" ? "#1f2937" : "transparent", border: "none", color: f2Mode === "gen" ? "#fff" : "#6b7280", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>AI Gen</button>
-              <button onClick={() => setF2Mode("upload")} style={{ padding: "3px 8px", borderRadius: 4, background: f2Mode === "upload" ? "#1f2937" : "transparent", border: "none", color: f2Mode === "upload" ? "#fff" : "#6b7280", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>Upload</button>
-              <div style={{ flex: 1 }} />
-              {/* Device selector for frame 2 */}
-              <select value={f2Did} onChange={e => setF2Did(e.target.value)} style={{ background: "#111318", border: "1px solid #1f2937", borderRadius: 3, color: "#e5e7eb", fontSize: 8, padding: "2px 4px", outline: "none" }}>
-                {Object.entries(D).map(([k, d]) => <option key={k} value={k}>{d.n}</option>)}
-              </select>
-              <button onClick={() => setF2Open(false)} style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 12 }}>x</button>
-            </div>
-
-            {/* Frame 2 input area */}
-            <div style={{ flexShrink: 0, padding: 8, borderBottom: "1px solid #1f2937" }}>
-              {f2Mode === "url" && <div style={{ display: "flex", gap: 4 }}>
-                <input value={f2Url} onChange={e => setF2Url(e.target.value)} placeholder="Paste URL..." onKeyDown={e => e.key === "Enter" && setF2Url(f2Url.startsWith("http") ? f2Url : "https://" + f2Url)} style={{ flex: 1, padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 9, outline: "none" }} />
-                <button onClick={() => { if (!f2Url.startsWith("http")) setF2Url("https://" + f2Url); }} style={{ padding: "5px 8px", borderRadius: 4, background: "#2dd4a0", color: "#000", fontSize: 9, fontWeight: 700, border: "none", cursor: "pointer" }}>Go</button>
-              </div>}
-              {f2Mode === "gen" && <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <input value={dalleKey} onChange={e => setDalleKey(e.target.value)} placeholder="OpenAI API Key (saved)" type="password" style={{ padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 9, outline: "none" }} />
-                <div style={{ display: "flex", gap: 4 }}>
-                  <input value={dallePrompt} onChange={e => setDallePrompt(e.target.value)} placeholder="Describe the design..." onKeyDown={e => e.key === "Enter" && generateImage()} style={{ flex: 1, padding: "5px 7px", borderRadius: 4, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 9, outline: "none" }} />
-                  <button onClick={generateImage} disabled={dalleLoading} style={{ padding: "5px 10px", borderRadius: 4, background: dalleLoading ? "#374151" : "#7c3aed", color: "#fff", fontSize: 9, fontWeight: 700, border: "none", cursor: "pointer" }}>
-                    {dalleLoading ? "..." : "Generate"}
-                  </button>
-                </div>
-                <p style={{ fontSize: 8, color: "#4b5563" }}>DALL-E 3 generates mobile UI designs at 1024x1792</p>
-              </div>}
-              {f2Mode === "upload" && <div>
-                <input type="file" accept="image/*" onChange={e => {
-                  const f = e.target.files?.[0]; if (!f) return;
-                  const r = new FileReader();
-                  r.onload = ev => { if (typeof ev.target?.result === "string") setDalleResult(ev.target.result); };
-                  r.readAsDataURL(f);
-                }} style={{ fontSize: 9, color: "#6b7280" }} />
-              </div>}
-            </div>
-
-            {/* Frame 2 preview */}
-            <div ref={f2ContainerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", overflow: "auto", background: "#050607" }}>
-              {dalleResult && f2Mode !== "url" ? (
-                <div style={{ transform: `scale(${f2Scale})`, transformOrigin: "center center" }}>
-                  <div style={{ width: ((D as any)[f2Did] || D["i15p"]).w + 2, borderRadius: ((D as any)[f2Did] || D["i15p"]).r, overflow: "hidden", boxShadow: "0 0 0 2px #374151, 0 20px 60px rgba(0,0,0,.5)", background: "#000" }}>
-                    <img src={dalleResult} alt="Generated" style={{ width: "100%", display: "block" }} />
-                  </div>
-                </div>
-              ) : (
-                <div style={{ transform: `scale(${f2Scale})`, transformOrigin: "center center" }}>
-                  <div style={{ width: ((D as any)[f2Did] || D["i15p"]).w + 2, height: ((D as any)[f2Did] || D["i15p"]).h, borderRadius: ((D as any)[f2Did] || D["i15p"]).r, overflow: "hidden", boxShadow: "0 0 0 2px #374151, 0 20px 60px rgba(0,0,0,.5)", background: "#111" }}>
-                    <iframe ref={f2IframeRef} style={{ width: ((D as any)[f2Did] || D["i15p"]).w, height: ((D as any)[f2Did] || D["i15p"]).h, border: "none", display: "block" }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-                  </div>
                 </div>
               )}
+
+              {/* ── PROPERTIES ── */}
+              {rightPanel === "props" && (
+                <>
+                  {!sel ? (
+                    <div style={{ textAlign: "center", color: "#52525b", paddingTop: 40 }}>
+                      <div style={{ fontSize: 28, opacity: 0.3, marginBottom: 10 }}>👆</div>
+                      <p style={{ fontSize: 11 }}>Click any element to inspect</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Element info */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                        <span style={{ background: "#f97316", color: "#000", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 3 }}>&lt;{sel.tag}&gt;</span>
+                        <span style={{ fontSize: 9, color: "#71717a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{sel.txt}</span>
+                      </div>
+                      {/* Dims */}
+                      <div style={{ background: "#111", border: "1px solid #1c1c1c", borderRadius: 5, padding: "6px 10px", marginBottom: 10, display: "flex", gap: 14, fontSize: 9, color: "#52525b", fontFamily: "monospace" }}>
+                        {["x","y","w","h"].map(k => <span key={k}>{k}:{sel.rect[k as keyof typeof sel.rect]}</span>)}
+                      </div>
+
+                      {/* Text content */}
+                      <Section label="Content">
+                        <input value={sel.txt} onChange={e => applyText(e.target.value)} style={{ ...inputSty, fontFamily: "monospace", fontSize: 10 }} />
+                      </Section>
+
+                      {/* Style groups */}
+                      {filteredGroups.map(g => (
+                        <Section key={g.g} label={g.g}>
+                          {g.props.map(p => {
+                            const v = sel.sty[p.k] || "";
+                            return (
+                              <div key={p.k} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", borderRadius: 4, background: "#0f0f11", border: "1px solid #1c1c1c", marginBottom: 3 }}>
+                                {p.type === "color" && (
+                                  <div style={{ width: 20, height: 20, borderRadius: 3, background: v || "#000", border: "1px solid #333", flexShrink: 0, position: "relative", overflow: "hidden" }}>
+                                    <input type="color" value={hex(v) || "#000000"} onChange={e => applyStyle(p.k, e.target.value)}
+                                      style={{ position: "absolute", inset: -4, opacity: 0, cursor: "pointer", width: "140%", height: "140%" }} />
+                                  </div>
+                                )}
+                                <span style={{ fontSize: 8, color: "#52525b", minWidth: 52, flexShrink: 0 }}>{p.label}</span>
+                                {p.type === "px" && (
+                                  <>
+                                    <input type="range" min={0} max={120} step={1} value={parseFloat(v) || 0}
+                                      onChange={e => applyStyle(p.k, e.target.value + "px")}
+                                      style={{ flex: 1, accentColor: "#f97316", cursor: "pointer" }} />
+                                    <input value={v} onChange={e => applyStyle(p.k, e.target.value)}
+                                      style={{ width: 50, background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 3, padding: "2px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none", textAlign: "right" }} />
+                                  </>
+                                )}
+                                {p.type === "select" && (
+                                  <select value={v} onChange={e => applyStyle(p.k, e.target.value)}
+                                    style={{ flex: 1, background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 3, padding: "3px 4px", fontSize: 9, color: "#e5e7eb", outline: "none", cursor: "pointer" }}>
+                                    {p.opts?.map(o => <option key={o} value={o}>{o}</option>)}
+                                  </select>
+                                )}
+                                {(p.type === "text" || p.type === "color") && (
+                                  <input value={v} onChange={e => applyStyle(p.k, e.target.value)}
+                                    style={{ flex: 1, background: "#0a0a0a", border: "1px solid #27272a", borderRadius: 3, padding: "2px 4px", fontSize: 9, color: "#e5e7eb", fontFamily: "monospace", outline: "none" }} />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </Section>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
             </div>
-          </div>
+          </aside>
         )}
       </div>
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-      `}</style>
+      <style>{`* { box-sizing: border-box; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-// ═══ Tiny components ═══
-function S() { return <div style={{ width: 1, height: 20, background: "#1f2937", flexShrink: 0 }} />; }
-function Chip({ children, active, onClick, accent }: { children: React.ReactNode; active?: boolean; onClick: () => void; accent?: boolean }) {
-  return <button onClick={onClick} style={{ flexShrink: 0, padding: "3px 8px", fontSize: 9, fontWeight: active ? 700 : 400, color: accent ? "#f97316" : active ? "#fff" : "#6b7280", background: active ? "#1f2937" : "transparent", border: active ? "1px solid #374151" : accent ? "1px solid #f97316" : "1px solid transparent", borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap" }}>{children}</button>;
+// ─── Tiny sub-components ──────────────────────────────────────────────────────
+function VSep() {
+  return <div style={{ width: 1, height: 22, background: "#27272a", flexShrink: 0 }} />;
 }
-function Tb({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
-  return <button onClick={onClick} style={{ width: 28, height: 28, borderRadius: 5, background: "#1a1b1e", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{children}</button>;
+function Chip({ children, active, onClick }: { children: React.ReactNode; active?: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{ padding: "3px 7px", fontSize: 9, fontWeight: active ? 700 : 400, color: active ? "#e5e7eb" : "#71717a", background: active ? "#27272a" : "transparent", border: active ? "1px solid #3f3f46" : "1px solid transparent", borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+      {children}
+    </button>
+  );
 }
-function Tag({ children, c }: { children: React.ReactNode; c: string }) {
-  return <span style={{ fontSize: 7, color: c, fontWeight: 700, fontFamily: "monospace", background: "rgba(0,0,0,0.6)", padding: "1px 4px", borderRadius: 2 }}>{children}</span>;
+function IconBtn({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{ width: 26, height: 26, borderRadius: 5, background: "#18181b", border: "1px solid #27272a", color: "#a1a1aa", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      {children}
+    </button>
+  );
 }
-function GhInp({ label, type, value, onChange, ph }: { label: string; type?: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; ph?: string }) {
-  return <label style={{ fontSize: 10, color: "#6b7280" }}>{label}<input type={type || "text"} value={value} onChange={onChange} placeholder={ph} style={{ display: "block", width: "100%", marginTop: 3, padding: "7px 10px", borderRadius: 5, background: "#111318", border: "1px solid #1f2937", color: "#e5e7eb", fontSize: 11, fontFamily: "monospace", outline: "none" }} /></label>;
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 9, color: "#71717a", fontWeight: 600 }}>
+      {label}
+      {children}
+    </label>
+  );
 }
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 8, color: "#3f3f46", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+const inputSty: React.CSSProperties = {
+  width: "100%", padding: "7px 10px", borderRadius: 5, background: "#0f0f11",
+  border: "1px solid #27272a", color: "#e5e7eb", fontSize: 10, outline: "none",
+};
+const secBtnSty: React.CSSProperties = {
+  height: 34, borderRadius: 5, background: "#18181b", border: "1px solid #27272a",
+  color: "#a1a1aa", cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+};
