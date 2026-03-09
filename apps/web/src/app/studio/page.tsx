@@ -8,112 +8,158 @@ const MOBILE_CHAT_URL =
   process.env.NEXT_PUBLIC_MOBILE_CHAT_URL ?? "http://localhost:3001";
 
 const MIN_PANEL_WIDTH = 0;
-const DEFAULT_WIDTHS = { left: 320, center: 0, right: 0 }; // right/center fill remaining
-
-const HANDLE_HIT = 6; // px hit area for resize handle
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-interface PanelWidths {
-  left: number;   // px
-  center: number; // px
-  right: number;  // flex fill (auto)
-}
+const HANDLE_HIT      = 8; // wider hit target
 
 // ── Studio ─────────────────────────────────────────────────────────────────────
 
 export default function StudioPage() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [leftW, setLeftW] = useState(300);
-  const [centerW, setCenterW] = useState(580);
-
-  // Collapsed state
-  const [leftOpen, setLeftOpen] = useState(true);
+  const [leftW,   setLeftW]   = useState(300);
+  const [centerW, setCenterW] = useState(620);
+  const [leftOpen,   setLeftOpen]   = useState(true);
   const [centerOpen, setCenterOpen] = useState(true);
-  // right is always open, takes remainder
+  const [isDragging, setIsDragging] = useState(false);
 
   // Browser panel state
-  const [browserUrl, setBrowserUrl] = useState("https://claude.ai");
-  const [inputUrl, setInputUrl] = useState("https://claude.ai");
-  const [proxyLoading, setProxyLoading] = useState(false);
+  const [inputUrl,       setInputUrl]       = useState("");
+  const [browserLoading, setBrowserLoading] = useState(true);
+  const browserRef = useRef<HTMLIFrameElement>(null);
 
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  // ── Resize drag ──────────────────────────────────────────────────────────────
-
-  const dragging = useRef<{ handle: "left-right" | "center-right"; startX: number; startLeft: number; startCenter: number } | null>(null);
-
-  const onMouseDown = useCallback((handle: "left-right" | "center-right") => (e: React.MouseEvent) => {
-    e.preventDefault();
-    dragging.current = { handle, startX: e.clientX, startLeft: leftW, startCenter: centerW };
-  }, [leftW, centerW]);
-
+  // ── postMessage bridge ───────────────────────────────────────────────────────
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!dragging.current) return;
-      const dx = e.clientX - dragging.current.startX;
-      if (dragging.current.handle === "left-right") {
-        setLeftW(Math.max(MIN_PANEL_WIDTH, dragging.current.startLeft + dx));
-      } else {
-        setCenterW(Math.max(MIN_PANEL_WIDTH, dragging.current.startCenter + dx));
+    const handler = (e: MessageEvent) => {
+      if (!e.data || typeof e.data !== "object") return;
+      switch (e.data.type) {
+        case "browser:url-changed": setInputUrl(e.data.url ?? "");  break;
+        case "browser:connected":   setBrowserLoading(false);        break;
+        case "browser:loading":     setBrowserLoading(true);         break;
       }
     };
-    const onUp = () => { dragging.current = null; };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
   }, []);
 
-  // ── Browser navigation ────────────────────────────────────────────────────────
+  const postToBrowser = useCallback((msg: object) => {
+    browserRef.current?.contentWindow?.postMessage(msg, "*");
+  }, []);
+
+  const normalize = (url: string): string => {
+    const s = url.trim();
+    if (!s) return "";
+    if (/^(https?:|about:)/.test(s)) return s;
+    if (/^(localhost|127\.|192\.168\.)/.test(s)) return "http://" + s;
+    return "https://" + s;
+  };
 
   const navigate = useCallback((url: string) => {
-    let target = url.trim();
-    if (!target.startsWith("http")) target = "https://" + target;
-    setProxyLoading(true);
-    setBrowserUrl(target);
+    const target = normalize(url);
+    if (!target) return;
     setInputUrl(target);
-  }, []);
+    postToBrowser({ type: "browser:navigate", url: target });
+  }, [postToBrowser]);
 
-  const proxyUrl = `/api/proxy?url=${encodeURIComponent(browserUrl)}`;
+  // ── Resize — global window listeners, never loses tracking ───────────────────
+  // Root cause of buggy drag: events on a parent div get swallowed by iframes
+  // underneath as the pointer moves. Fix: attach move/up to window directly
+  // so events always fire regardless of what's under the pointer.
+  // The drag overlay (pointer-events:none on iframes during drag) is the backup.
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  const dragState = useRef<{
+    handle: "left-right" | "center-right";
+    startX: number;
+    startLeft: number;
+    startCenter: number;
+  } | null>(null);
 
-  const actualLeft = leftOpen ? leftW : 0;
+  const startDrag = useCallback(
+    (handle: "left-right" | "center-right") =>
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragState.current = {
+        handle,
+        startX:      e.clientX,
+        startLeft:   leftW,
+        startCenter: centerW,
+      };
+      setIsDragging(true);
+    },
+    [leftW, centerW]
+  );
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!dragState.current) return;
+      const dx = e.clientX - dragState.current.startX;
+      if (dragState.current.handle === "left-right") {
+        setLeftW(Math.max(MIN_PANEL_WIDTH, dragState.current.startLeft + dx));
+      } else {
+        setCenterW(Math.max(MIN_PANEL_WIDTH, dragState.current.startCenter + dx));
+      }
+    };
+
+    const onUp = () => {
+      if (!dragState.current) return;
+      dragState.current = null;
+      setIsDragging(false);
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup",   onUp);
+    window.addEventListener("pointercancel", onUp);
+
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup",   onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, []); // mount once — dragState is a ref, no stale closure issue
+
+  const actualLeft   = leftOpen   ? leftW   : 0;
   const actualCenter = centerOpen ? centerW : 0;
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        display: "flex",
-        height: "100dvh",
-        width: "100%",
-        background: "#050607",
-        overflow: "hidden",
-        userSelect: dragging.current ? "none" : "auto",
-      }}
-    >
-      {/* ── LEFT PANEL — Mobile Chat ─────────────────────────────────────────── */}
-      <div style={{ width: actualLeft, flexShrink: 0, overflow: "hidden", transition: dragging.current ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)", position: "relative" }}>
-        <PanelShell
-          title="Chat"
-          onCollapse={() => setLeftOpen(false)}
-          isCollapsed={false}
-        >
+    <div style={{
+      display: "flex", height: "100dvh", width: "100%",
+      background: "#050607", overflow: "hidden",
+      userSelect: isDragging ? "none" : "auto",
+      cursor:     isDragging ? "col-resize" : "auto",
+    }}>
+
+      {/*
+        Drag overlay — sits over all iframes during drag so pointer events
+        can't be swallowed by iframe documents. Invisible, covers everything.
+      */}
+      {isDragging && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          cursor: "col-resize",
+        }} />
+      )}
+
+      {/* ── LEFT — Chat ──────────────────────────────────────────────────────── */}
+      <div style={{
+        width: actualLeft, flexShrink: 0, overflow: "hidden",
+        transition: isDragging ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)",
+      }}>
+        <PanelShell title="Chat" onCollapse={() => setLeftOpen(false)} isCollapsed={false}>
           <iframe
             src={MOBILE_CHAT_URL}
             style={{ width: "100%", height: "100%", border: "none", display: "block" }}
             allow="clipboard-write; clipboard-read"
-            title="StreamsAI Mobile Chat"
+            title="StreamsAI Chat"
           />
         </PanelShell>
       </div>
 
-      {/* Resize handle: left | center */}
-      <ResizeHandle onMouseDown={onMouseDown("left-right")} />
+      <ResizeHandle onPointerDown={startDrag("left-right")} active={isDragging} />
 
-      {/* ── CENTER PANEL — Browser ───────────────────────────────────────────── */}
-      <div style={{ width: actualCenter, flexShrink: 0, overflow: "hidden", transition: dragging.current ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)", borderLeft: "1px solid rgba(255,255,255,0.06)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+      {/* ── CENTER — Browser ─────────────────────────────────────────────────── */}
+      <div style={{
+        width: actualCenter, flexShrink: 0, overflow: "hidden",
+        transition: isDragging ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)",
+        borderLeft:  "1px solid rgba(255,255,255,0.06)",
+        borderRight: "1px solid rgba(255,255,255,0.06)",
+      }}>
         <PanelShell
           title="Browser"
           onCollapse={() => setCenterOpen(false)}
@@ -123,36 +169,36 @@ export default function StudioPage() {
               value={inputUrl}
               onChange={setInputUrl}
               onNavigate={navigate}
-              onBack={() => iframeRef.current?.contentWindow?.history.back()}
-              onForward={() => iframeRef.current?.contentWindow?.history.forward()}
-              onRefresh={() => { setProxyLoading(true); setBrowserUrl(b => b + ""); }}
+              onBack={    () => postToBrowser({ type: "browser:back"    })}
+              onForward={ () => postToBrowser({ type: "browser:forward" })}
+              onRefresh={ () => postToBrowser({ type: "browser:reload"  })}
+              loading={browserLoading}
             />
           }
         >
-          {proxyLoading && <LoadingBar onHide={() => setProxyLoading(false)} />}
           <iframe
-            ref={iframeRef}
-            key={browserUrl}
-            src={proxyUrl}
+            ref={browserRef}
+            src="/browser-session.html"
             style={{ width: "100%", height: "100%", border: "none", display: "block" }}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-            onLoad={() => setProxyLoading(false)}
+            allow="clipboard-write; clipboard-read; fullscreen"
             title="Browser"
           />
         </PanelShell>
       </div>
 
-      {/* Resize handle: center | right */}
-      <ResizeHandle onMouseDown={onMouseDown("center-right")} />
+      <ResizeHandle onPointerDown={startDrag("center-right")} active={isDragging} />
 
-      {/* ── RIGHT PANEL — EditorPro ──────────────────────────────────────────── */}
+      {/* ── RIGHT — EditorPro ────────────────────────────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
         <PanelShell title="EditorPro" isCollapsed={false}>
-          <EditorProEmbed />
+          <iframe
+            src="/editor"
+            style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+            title="EditorPro"
+          />
         </PanelShell>
       </div>
 
-      {/* Collapsed panel restore buttons */}
       {!leftOpen && (
         <RestoreTab label="Chat" onClick={() => setLeftOpen(true)} side="left" />
       )}
@@ -163,45 +209,38 @@ export default function StudioPage() {
   );
 }
 
-// ── Panel shell ────────────────────────────────────────────────────────────────
+// ── PanelShell ─────────────────────────────────────────────────────────────────
 
-function PanelShell({
-  children,
-  title,
-  onCollapse,
-  isCollapsed: _isCollapsed,
-  toolbar,
-}: {
-  children: React.ReactNode;
-  title: string;
-  onCollapse?: () => void;
-  isCollapsed: boolean;
+function PanelShell({ children, title, onCollapse, isCollapsed: _ic, toolbar }: {
+  children: React.ReactNode; title: string;
+  onCollapse?: () => void; isCollapsed: boolean;
   toolbar?: React.ReactNode;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
-      {/* Panel header */}
       <div style={{
         display: "flex", alignItems: "center", gap: 8,
         height: 36, padding: "0 12px",
-        background: "#0d0d14", borderBottom: "1px solid rgba(255,255,255,0.06)",
+        background: "#0d0d14",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
         flexShrink: 0,
       }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: "0.08em", flexShrink: 0 }}>
+        <span style={{
+          fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.4)",
+          textTransform: "uppercase", letterSpacing: "0.08em", flexShrink: 0,
+        }}>
           {title}
         </span>
         {toolbar && <div style={{ flex: 1, minWidth: 0 }}>{toolbar}</div>}
         {onCollapse && (
-          <button
-            onClick={onCollapse}
-            style={{ marginLeft: "auto", background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", padding: 4, borderRadius: 4, flexShrink: 0 }}
-            title="Collapse panel"
-          >
-            ✕
-          </button>
+          <button onClick={onCollapse} style={{
+            marginLeft: "auto", background: "none", border: "none",
+            color: "rgba(255,255,255,0.25)", cursor: "pointer",
+            fontSize: 14, display: "flex", alignItems: "center",
+            padding: 4, borderRadius: 4, flexShrink: 0,
+          }}>✕</button>
         )}
       </div>
-      {/* Content */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         {children}
       </div>
@@ -209,27 +248,30 @@ function PanelShell({
   );
 }
 
-// ── Browser address bar ────────────────────────────────────────────────────────
+// ── BrowserBar ─────────────────────────────────────────────────────────────────
 
-function BrowserBar({ value, onChange, onNavigate, onBack, onForward, onRefresh }: {
+function BrowserBar({ value, onChange, onNavigate, onBack, onForward, onRefresh, loading }: {
   value: string; onChange: (v: string) => void;
   onNavigate: (url: string) => void;
   onBack: () => void; onForward: () => void; onRefresh: () => void;
+  loading: boolean;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-      <NavBtn onClick={onBack} label="←" />
+      <NavBtn onClick={onBack}    label="←" />
       <NavBtn onClick={onForward} label="→" />
-      <NavBtn onClick={onRefresh} label="↻" />
+      <NavBtn onClick={onRefresh} label={loading ? "◌" : "↻"} />
       <input
         value={value}
         onChange={e => onChange(e.target.value)}
         onKeyDown={e => { if (e.key === "Enter") onNavigate(value); }}
+        placeholder="Enter any URL…"
         style={{
           flex: 1, minWidth: 0, padding: "3px 8px",
-          background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 6, color: "#e5e7eb", fontSize: 11, outline: "none",
-          fontFamily: "monospace",
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 6, color: "#e5e7eb", fontSize: 11,
+          outline: "none", fontFamily: "monospace",
         }}
       />
       <NavBtn onClick={() => onNavigate(value)} label="Go" />
@@ -237,94 +279,72 @@ function BrowserBar({ value, onChange, onNavigate, onBack, onForward, onRefresh 
   );
 }
 
-function NavBtn({ onClick, label }: { onClick: () => void; label: string }) {
+function NavBtn({ onClick, label, disabled = false }: {
+  onClick: () => void; label: string; disabled?: boolean;
+}) {
   return (
-    <button
-      onClick={onClick}
-      style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 12, padding: "2px 4px", borderRadius: 3 }}
-    >
-      {label}
-    </button>
+    <button onClick={onClick} disabled={disabled} style={{
+      background: "none", border: "none",
+      color: disabled ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.4)",
+      cursor: disabled ? "not-allowed" : "pointer",
+      fontSize: 12, padding: "2px 4px", borderRadius: 3,
+    }}>{label}</button>
   );
 }
 
-// ── Resize handle ──────────────────────────────────────────────────────────────
+// ── ResizeHandle ───────────────────────────────────────────────────────────────
 
-function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
+function ResizeHandle({ onPointerDown, active }: {
+  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  active: boolean;
+}) {
   const [hover, setHover] = useState(false);
+  const lit = hover || active;
   return (
     <div
-      onMouseDown={onMouseDown}
+      onPointerDown={onPointerDown}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        width: HANDLE_HIT, flexShrink: 0, cursor: "col-resize", zIndex: 10,
-        background: hover ? "rgba(124,106,247,0.4)" : "transparent",
-        transition: "background 150ms ease",
-        position: "relative",
+        width: HANDLE_HIT, flexShrink: 0,
+        cursor: "col-resize", zIndex: 100,
+        position: "relative", touchAction: "none",
+        background: lit ? "rgba(124,106,247,0.15)" : "transparent",
+        transition: "background 120ms ease",
       }}
     >
+      {/* Visual line */}
       <div style={{
-        position: "absolute", inset: "0 2px",
-        background: hover ? "rgba(124,106,247,0.5)" : "rgba(255,255,255,0.04)",
+        position: "absolute", top: 0, bottom: 0,
+        left: "50%", transform: "translateX(-50%)",
+        width: 2,
+        background: lit ? "rgba(124,106,247,0.6)" : "rgba(255,255,255,0.06)",
         borderRadius: 2,
-        transition: "background 150ms ease",
+        transition: "background 120ms ease",
       }} />
     </div>
   );
 }
 
-// ── Loading bar ────────────────────────────────────────────────────────────────
+// ── RestoreTab ─────────────────────────────────────────────────────────────────
 
-function LoadingBar({ onHide }: { onHide: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onHide, 4000);
-    return () => clearTimeout(t);
-  }, [onHide]);
+function RestoreTab({ label, onClick, side }: {
+  label: string; onClick: () => void; side: "left" | "center";
+}) {
   return (
-    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, zIndex: 5, overflow: "hidden" }}>
-      <div style={{
-        height: "100%", background: "#7c6af7",
-        animation: "loadBar 2s ease-out forwards",
-      }} />
-      <style>{`@keyframes loadBar { from { width: 0%; } to { width: 100%; } }`}</style>
-    </div>
-  );
-}
-
-// ── Restore tab ────────────────────────────────────────────────────────────────
-
-function RestoreTab({ label, onClick, side }: { label: string; onClick: () => void; side: "left" | "center" }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        position: "fixed",
-        [side === "left" ? "left" : "left"]: side === "left" ? 0 : 40,
-        top: "50%", transform: "translateY(-50%) rotate(-90deg)",
-        transformOrigin: "center",
-        background: "#16161f", border: "1px solid rgba(255,255,255,0.08)",
-        color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600,
-        padding: "4px 10px", borderRadius: "0 0 6px 6px",
-        cursor: "pointer", zIndex: 20,
-        textTransform: "uppercase", letterSpacing: "0.08em",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-// ── EditorPro embed (imports the existing page component) ─────────────────────
-
-// The EditorPro lives at /editor in apps/web. We embed it via iframe to keep
-// full isolation and avoid prop/state collisions with the studio shell.
-function EditorProEmbed() {
-  return (
-    <iframe
-      src="/editor"
-      style={{ width: "100%", height: "100%", border: "none", display: "block" }}
-      title="EditorPro"
-    />
+    <button onClick={onClick} style={{
+      position: "fixed",
+      left: side === "left" ? 0 : 40,
+      top: "50%",
+      transform: "translateY(-50%) rotate(-90deg)",
+      transformOrigin: "center",
+      background: "#16161f",
+      border: "1px solid rgba(255,255,255,0.08)",
+      color: "rgba(255,255,255,0.5)",
+      fontSize: 10, fontWeight: 600,
+      padding: "4px 10px", borderRadius: "0 0 6px 6px",
+      cursor: "pointer", zIndex: 20,
+      textTransform: "uppercase", letterSpacing: "0.08em",
+    }}>{label}</button>
   );
 }
