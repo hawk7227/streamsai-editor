@@ -114,11 +114,12 @@ export default function EditorPro() {
     const ro = new ResizeObserver(([e]) => {
       const { width: cw, height: ch } = e.contentRect;
       const auto = Math.min((cw - 48) / dev.w, (ch - 48) / dev.h, 1);
-      setScale(manualZoom > 0 ? manualZoom : auto);
+      // Always update scale; if user has manual zoom set, prefer that
+      setManualZoom(z => { if (z > 0) return z; setScale(auto); return z; });
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [dev, manualZoom]);
+  }, [dev]);
 
   // iframe
   const iframeRef = useRef<HTMLIFrameElement>(null);
