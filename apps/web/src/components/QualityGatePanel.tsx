@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useCallback, useMemo, useRef, useState } from 'react'
-import { buildAuditReport, buildHonestFeedback, isTextLikeFile, type AuditReport, type AuditedFile } from '@/lib/quality-gate'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { buildHonestFeedback, emptyGateStatuses, isTextLikeFile, type AuditReport, type AuditedFile, type GateStatus } from '@/lib/quality-gate'
 
 type QueueFile = AuditedFile & {
   raw?: File
+  progress: number
 }
 
 type ChatMessage = {
@@ -12,25 +13,30 @@ type ChatMessage = {
   text: string
 }
 
-const PIPELINE_STEPS = [
-  'Structure',
-  'Code Quality',
-  'UX Polish',
-  'Mobile',
-  'Performance',
-  'Reliability',
-  'Release',
+const PROMPTS = [
+  'What failed?',
+  'What blocks release?',
+  'Does this feel premium?',
+  'What should dev fix first?',
 ]
 
 export default function QualityGatePanel() {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
+  const pollRef = useRef<number | null>(null)
+
   const [queue, setQueue] = useState<QueueFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
+  const [uploadId, setUploadId] = useState<string | null>(null)
+  const [runId, setRunId] = useState<string | null>(null)
+  const [gateStatuses, setGateStatuses] = useState<GateStatus[]>(emptyGateStatuses())
   const [report, setReport] = useState<AuditReport | null>(null)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState('')
   const [chatBusy, setChatBusy] = useState(false)
+  const [statusText, setStatusText] = useState('Drop files, folders, or a zip export. The gate will audit structure, code quality, mobile behavior, reliability, and release readiness.')
   const [chat, setChat] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -38,70 +44,158 @@ export default function QualityGatePanel() {
     },
   ])
 
-  const selectedFile = queue.find((file) => file.id === selectedFileId) ?? queue[0] ?? null
-  const handlePick = useCallback(() => inputRef.current?.click(), [])
+  const selectedFile = useMemo(() => {
+    const fromQueue = queue.find((file) => file.id === selectedFileId)
+    const fromReport = report?.files.find((file) => file.id === selectedFileId)
+    return fromQueue || fromReport || report?.files?.[0] || queue[0] || null
+  }, [queue, report, selectedFileId])
+
+  const handlePickFiles = useCallback(() => fileInputRef.current?.click(), [])
+  const handlePickFolder = useCallback(() => folderInputRef.current?.click(), [])
+
+  const updateQueueStatus = useCallback((status: QueueFile['status'], progress: number) => {
+    setQueue((prev) => prev.map((file) => ({ ...file, status, progress })))
+  }, [])
 
   const ingestFiles = useCallback(async (files: FileList | File[]) => {
     const list = Array.from(files)
     if (!list.length) return
 
-    const nextItems: QueueFile[] = list.map((file, index) => ({
-      id: `${file.name}-${file.size}-${Date.now()}-${index}`,
-      name: file.webkitRelativePath || file.name,
-      size: file.size,
-      type: file.type,
-      textPreview: '',
-      score: 0,
-      status: 'queued',
-      issues: [],
-      raw: file,
-    }))
-
-    setQueue((prev) => [...nextItems, ...prev])
-    if (!selectedFileId && nextItems[0]) setSelectedFileId(nextItems[0].id)
-
-    for (const item of nextItems) {
-      setQueue((prev) => prev.map((file) => file.id === item.id ? { ...file, status: 'hashing' } : file))
-      const preview = isTextLikeFile(item.name, item.type) ? await safeReadText(item.raw!) : ''
-      setQueue((prev) => prev.map((file) => file.id === item.id ? {
-        ...file,
-        textPreview: preview.slice(0, 100_000),
+    const nextItems: QueueFile[] = []
+    for (let index = 0; index < list.length; index += 1) {
+      const file = list[index]
+      const preview = isTextLikeFile(file.webkitRelativePath || file.name, file.type) ? (await safeReadText(file)).slice(0, 100_000) : ''
+      nextItems.push({
+        id: `${file.name}-${file.size}-${Date.now()}-${index}`,
+        name: file.webkitRelativePath || file.name,
+        size: file.size,
+        type: file.type,
+        textPreview: preview,
+        score: 0,
         status: 'queued',
-      } : file))
+        issues: [],
+        progress: 0,
+        raw: file,
+      })
     }
-  }, [selectedFileId])
+
+    setQueue(nextItems)
+    setSelectedFileId(nextItems[0]?.id || null)
+    setReport(null)
+    setUploadId(null)
+    setRunId(null)
+    setGateStatuses(emptyGateStatuses())
+    setStatusText(`${nextItems.length} file${nextItems.length === 1 ? '' : 's'} ready. Upload when you are ready to audit.`)
+  }, [])
+
+  const clearAll = useCallback(() => {
+    setQueue([])
+    setReport(null)
+    setSelectedFileId(null)
+    setUploadId(null)
+    setRunId(null)
+    setIsRunning(false)
+    setIsUploading(false)
+    setGateStatuses(emptyGateStatuses())
+    setStatusText('Nothing uploaded yet.')
+  }, [])
+
+  const pollStatus = useCallback((nextRunId: string) => {
+    if (pollRef.current) window.clearInterval(pollRef.current)
+    pollRef.current = window.setInterval(async () => {
+      const res = await fetch(`/api/quality-gate/status?runId=${encodeURIComponent(nextRunId)}`)
+      if (!res.ok) return
+      const data = await res.json() as { status: string; gateStatuses: GateStatus[]; report: AuditReport | null; error: string | null }
+      setGateStatuses(data.gateStatuses || emptyGateStatuses())
+      if (data.report) {
+        setReport(data.report)
+        setQueue((prev) => prev.map((file) => {
+          const audited = data.report?.files.find((entry) => entry.name === file.name || entry.id === file.id)
+          return audited ? { ...file, ...audited, raw: file.raw, progress: 100 } : file
+        }))
+      }
+      if (data.status === 'completed') {
+        setIsRunning(false)
+        updateQueueStatus('complete', 100)
+        setStatusText('Audit complete. Review blockers and ask AI for the blunt readout.')
+        if (data.report) {
+          setChat((prev) => {
+            const next = [...prev]
+            next.push({ role: 'assistant', text: buildHonestFeedback(data.report) })
+            return next
+          })
+        }
+        if (pollRef.current) {
+          window.clearInterval(pollRef.current)
+          pollRef.current = null
+        }
+      }
+      if (data.status === 'failed') {
+        setIsRunning(false)
+        setStatusText(data.error || 'Audit failed.')
+        updateQueueStatus('failed', 100)
+        if (pollRef.current) {
+          window.clearInterval(pollRef.current)
+          pollRef.current = null
+        }
+      }
+    }, 700)
+  }, [updateQueueStatus])
+
+  useEffect(() => () => {
+    if (pollRef.current) window.clearInterval(pollRef.current)
+  }, [])
 
   const runAudit = useCallback(async () => {
-    if (!queue.length || isRunning) return
-    setIsRunning(true)
-    setReport(null)
+    if (!queue.length || isUploading || isRunning) return
+    setIsUploading(true)
+    setStatusText('Uploading build to the Quality Gate…')
+    updateQueueStatus('hashing', 12)
 
-    for (const status of ['scanning', 'testing', 'scoring'] as const) {
-      setQueue((prev) => prev.map((file) => ({ ...file, status })))
-      await wait(220)
+    try {
+      const formData = new FormData()
+      queue.forEach((file) => {
+        if (file.raw) formData.append('files', file.raw, file.name)
+      })
+      const uploadRes = await fetch('/api/quality-gate/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      const uploadData = await uploadRes.json() as { uploadId?: string; error?: string }
+      if (!uploadRes.ok || !uploadData.uploadId) {
+        throw new Error(uploadData.error || 'Upload failed')
+      }
+      setUploadId(uploadData.uploadId)
+      setStatusText('Upload complete. Starting audit engine…')
+      updateQueueStatus('scanning', 30)
+
+      const runRes = await fetch('/api/quality-gate/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId: uploadData.uploadId }),
+      })
+      const runData = await runRes.json() as { runId?: string; error?: string; gateStatuses?: GateStatus[] }
+      if (!runRes.ok || !runData.runId) {
+        throw new Error(runData.error || 'Unable to start audit')
+      }
+      setRunId(runData.runId)
+      setGateStatuses(runData.gateStatuses || emptyGateStatuses())
+      setIsRunning(true)
+      setStatusText('Audit running. Watching pipeline…')
+      updateQueueStatus('testing', 54)
+      pollStatus(runData.runId)
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : 'Audit failed')
+      updateQueueStatus('failed', 100)
+      setIsRunning(false)
+    } finally {
+      setIsUploading(false)
     }
+  }, [isRunning, isUploading, pollStatus, queue, updateQueueStatus])
 
-    const nextReport = buildAuditReport(queue.map((file) => ({
-      id: file.id,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      textPreview: file.textPreview,
-      status: 'complete',
-    })))
-
-    setQueue((prev) => prev.map((file) => {
-      const audited = nextReport.files.find((entry) => entry.id === file.id)
-      return audited ? { ...file, ...audited, raw: file.raw } : file
-    }))
-    setReport(nextReport)
-    setChat((prev) => [...prev, { role: 'assistant', text: buildHonestFeedback(nextReport) }])
-    setIsRunning(false)
-  }, [isRunning, queue])
-
-  const askAI = useCallback(async () => {
-    if (!chatInput.trim() || !report || chatBusy) return
-    const prompt = chatInput.trim()
+  const askAI = useCallback(async (preset?: string) => {
+    const prompt = (preset || chatInput).trim()
+    if (!prompt || !report || chatBusy) return
     setChat((prev) => [...prev, { role: 'user', text: prompt }])
     setChatInput('')
     setChatBusy(true)
@@ -127,6 +221,8 @@ export default function QualityGatePanel() {
       { label: 'Release', value: report.summary.releaseStatus.toUpperCase() },
       { label: 'Critical', value: String(report.summary.criticalIssues) },
       { label: 'Warnings', value: String(report.summary.warnings) },
+      { label: 'CI', value: report.summary.ciReady ? 'READY' : 'MISSING' },
+      { label: 'Files', value: String(report.summary.filesAudited) },
     ]
   }, [report])
 
@@ -142,7 +238,7 @@ export default function QualityGatePanel() {
             setIsDragging(false)
             void ingestFiles(e.dataTransfer.files)
           }}
-          onClick={handlePick}
+          onClick={handlePickFiles}
           style={{
             border: `1px dashed ${isDragging ? 'rgba(111, 236, 208, 0.8)' : 'rgba(255,255,255,0.14)'}`,
             borderRadius: 18,
@@ -159,25 +255,41 @@ export default function QualityGatePanel() {
           }}
         >
           <div style={pillStyle}>AI Coder Submission Gate</div>
-          <div style={{ color: '#f5f7fb', fontSize: 20, fontWeight: 600 }}>Drop files or folders here</div>
-          <div style={{ color: 'rgba(255,255,255,0.56)', fontSize: 13, textAlign: 'center', maxWidth: 360 }}>
-            Upload source files, whole folders, or a packaged build. The gate will audit structure, code quality, mobile behavior, reliability, and release readiness.
+          <div style={{ color: '#f5f7fb', fontSize: 20, fontWeight: 600, textAlign: 'center' }}>Drop files, folders, or a zip export</div>
+          <div style={{ color: 'rgba(255,255,255,0.56)', fontSize: 13, textAlign: 'center', maxWidth: 360 }}>{statusText}</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button style={primaryButtonStyle} onClick={(e) => { e.stopPropagation(); handlePickFiles(); }}>{isUploading ? 'Uploading…' : 'Choose files'}</button>
+            <button style={secondaryButtonStyle} onClick={(e) => { e.stopPropagation(); handlePickFolder(); }}>Choose folder</button>
           </div>
-          <button style={primaryButtonStyle}>Choose files</button>
           <input
-            ref={inputRef}
+            ref={fileInputRef}
             type="file"
             multiple
-            // @ts-expect-error webkitdirectory is supported in Chromium browsers
-            webkitdirectory=""
+            style={{ display: 'none' }}
+            onChange={(e) => { if (e.target.files) void ingestFiles(e.target.files) }}
+          />
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            {...({ webkitdirectory: '' } as Record<string, string>)}
             style={{ display: 'none' }}
             onChange={(e) => { if (e.target.files) void ingestFiles(e.target.files) }}
           />
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-          <button style={primaryButtonStyle} onClick={() => void runAudit()} disabled={!queue.length || isRunning}>{isRunning ? 'Running…' : 'Run check'}</button>
-          <button style={secondaryButtonStyle} onClick={() => { setQueue([]); setReport(null); setSelectedFileId(null) }}>Clear</button>
+          <button style={primaryButtonStyle} onClick={() => void runAudit()} disabled={!queue.length || isRunning || isUploading}>{isRunning ? 'Running…' : 'Run check'}</button>
+          <button style={secondaryButtonStyle} onClick={clearAll}>Clear</button>
+        </div>
+
+        <div style={{ marginTop: 12, border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: 12, background: 'rgba(255,255,255,0.02)' }}>
+          <div style={{ color: '#f4f7fb', fontSize: 13, fontWeight: 700 }}>Run State</div>
+          <div style={{ color: 'rgba(255,255,255,0.58)', fontSize: 12, marginTop: 6 }}>
+            Upload ID: {uploadId || '—'}<br />
+            Run ID: {runId || '—'}<br />
+            Mode: local audit engine + optional OpenAI review
+          </div>
         </div>
 
         <SectionTitle title="Upload Queue" subtitle={`${queue.length} item${queue.length === 1 ? '' : 's'}`} />
@@ -193,6 +305,9 @@ export default function QualityGatePanel() {
               <div style={{ minWidth: 0 }}>
                 <div style={{ color: '#f2f4f8', fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
                 <div style={{ color: 'rgba(255,255,255,0.48)', fontSize: 11, marginTop: 4 }}>{formatBytes(file.size)} • {file.status}</div>
+                <div style={{ marginTop: 8, height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.08)' }}>
+                  <div style={{ width: `${file.progress}%`, height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, #4bd8b8, #74d5ff)' }} />
+                </div>
               </div>
               <StatusBadge status={file.status} />
             </button>
@@ -203,110 +318,102 @@ export default function QualityGatePanel() {
       <div style={paneStyle}>
         <SectionTitle title="Live Check Pipeline" subtitle="Everything must pass before release" />
         <div style={{ display: 'grid', gap: 10 }}>
-          {PIPELINE_STEPS.map((step, index) => {
-            const gate = report?.gates[index]
-            const active = isRunning && index < PIPELINE_STEPS.length - 1
-            return (
-              <div key={step} style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '12px 14px',
-                borderRadius: 16,
-                border: '1px solid rgba(255,255,255,0.06)',
-                background: 'rgba(255,255,255,0.025)',
-              }}>
-                <div>
-                  <div style={{ color: '#f3f4f8', fontSize: 14, fontWeight: 600 }}>{step}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.46)', fontSize: 11, marginTop: 4 }}>{gate ? `${gate.issues} issue${gate.issues === 1 ? '' : 's'}` : active ? 'Running…' : 'Waiting'}</div>
-                </div>
-                <div style={{
-                  minWidth: 82,
-                  textAlign: 'right',
-                  color: gate ? (gate.passed ? '#7ff0b7' : '#ff8f7a') : 'rgba(255,255,255,0.55)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  letterSpacing: '0.04em',
-                }}>
-                  {gate ? `${gate.score}` : active ? 'ACTIVE' : 'IDLE'}
-                </div>
+          {gateStatuses.map((gate) => (
+            <div key={gate.key} style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 14px',
+              borderRadius: 16,
+              border: '1px solid rgba(255,255,255,0.06)',
+              background: 'rgba(255,255,255,0.025)',
+            }}>
+              <div>
+                <div style={{ color: '#f3f4f8', fontSize: 14, fontWeight: 600 }}>{gate.label}</div>
+                <div style={{ color: 'rgba(255,255,255,0.46)', fontSize: 11, marginTop: 4 }}>{gate.issues ? `${gate.issues} issue${gate.issues === 1 ? '' : 's'}` : gate.stage === 'running' ? 'Running…' : 'Waiting'}</div>
               </div>
-            )
-          })}
+              <div style={{ minWidth: 90, textAlign: 'right' }}>
+                <div style={{ color: gate.stage === 'failed' ? '#ff8f7a' : gate.stage === 'passed' ? '#7ff0b7' : gate.stage === 'running' ? '#74d5ff' : 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: 700, letterSpacing: '0.04em' }}>{gate.stage.toUpperCase()}</div>
+                <div style={{ color: 'rgba(255,255,255,0.44)', fontSize: 11, marginTop: 4 }}>{gate.score ?? '—'}</div>
+              </div>
+            </div>
+          ))}
         </div>
 
         <SectionTitle title="Release Score" subtitle="Blunt summary" />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 10 }}>
           {summaryCards.length === 0 ? <EmptyHint text="Run an audit to see scoring." /> : summaryCards.map((card) => (
             <div key={card.label} style={scoreCardStyle}>
-              <div style={{ color: 'rgba(255,255,255,0.52)', fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{card.label}</div>
-              <div style={{ color: '#ffffff', fontSize: 24, fontWeight: 700, marginTop: 8 }}>{card.value}</div>
+              <div style={{ color: 'rgba(255,255,255,0.54)', fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{card.label}</div>
+              <div style={{ color: '#f4f6fb', fontSize: 24, fontWeight: 700, marginTop: 8 }}>{card.value}</div>
             </div>
           ))}
         </div>
 
-        <SectionTitle title="File Review" subtitle={selectedFile ? selectedFile.name : 'Select a file'} />
+        <SectionTitle title="File Review" subtitle={selectedFile?.name || 'Select a file'} />
         <div style={listStyle}>
-          {!selectedFile ? <EmptyHint text="Pick a file from the queue." /> : selectedFile.issues.length === 0 ? <EmptyHint text="This file passed the current heuristic scan." /> : selectedFile.issues.map((issue) => (
-            <div key={issue.id} style={{ ...issueCardStyle, borderColor: severityBorder(issue.severity) }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <div>
-                  <div style={{ color: '#f5f7fb', fontSize: 13, fontWeight: 700 }}>{issue.title}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 4 }}>{issue.gate.toUpperCase()} • {issue.severity.toUpperCase()}</div>
+          {!selectedFile ? <EmptyHint text="Select a file to inspect issues." /> : (
+            <>
+              <div style={{ color: '#f4f7fb', fontWeight: 700, fontSize: 14 }}>{selectedFile.name}</div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Score {selectedFile.score || '—'} • {formatBytes(selectedFile.size)}</div>
+              {(selectedFile.issues || []).length === 0 ? (
+                <EmptyHint text="No file-specific issues detected." />
+              ) : selectedFile.issues.map((issue) => (
+                <div key={issue.id} style={issueCardStyle}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ color: '#f4f7fb', fontWeight: 700, fontSize: 13 }}>{issue.title}</div>
+                    <div style={{ color: issue.severity === 'critical' ? '#ff8f7a' : issue.severity === 'warning' ? '#ffd37a' : '#8fdcff', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>{issue.severity}</div>
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 6 }}>{issue.detail}</div>
+                  <div style={{ color: '#7ff0b7', fontSize: 12, marginTop: 8 }}>{issue.fix}</div>
                 </div>
-                <span style={{ ...smallPillStyle, background: severityBg(issue.severity), color: severityText(issue.severity) }}>{issue.severity}</span>
-              </div>
-              <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 10, lineHeight: 1.5 }}>{issue.detail}</div>
-              <div style={{ color: '#8bead0', fontSize: 12, marginTop: 10 }}>{issue.fix}</div>
-            </div>
-          ))}
+              ))}
+            </>
+          )}
         </div>
       </div>
 
       <div style={paneStyle}>
         <SectionTitle title="AI Review" subtitle="Honest mode is always on" />
-        <div style={{ ...listStyle, height: 'calc(100% - 132px)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {chat.map((msg, index) => (
-            <div key={`${msg.role}-${index}`} style={{
-              alignSelf: msg.role === 'user' ? 'flex-end' : 'stretch',
-              maxWidth: msg.role === 'user' ? '86%' : '100%',
+        <div style={{ ...listStyle, minHeight: 260, maxHeight: 420 }}>
+          {chat.map((message, index) => (
+            <div key={`${message.role}-${index}`} style={{
+              alignSelf: message.role === 'user' ? 'flex-end' : 'stretch',
+              background: message.role === 'user' ? 'rgba(111,236,208,0.1)' : 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 18,
               padding: '12px 14px',
-              borderRadius: 16,
-              background: msg.role === 'user' ? 'rgba(111,236,208,0.12)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${msg.role === 'user' ? 'rgba(111,236,208,0.24)' : 'rgba(255,255,255,0.06)'}`,
-              color: msg.role === 'user' ? '#dffdf5' : '#f4f6fb',
-              lineHeight: 1.45,
-              fontSize: 13,
-              whiteSpace: 'pre-wrap',
-            }}>{msg.text}</div>
+              color: '#f3f5fa',
+              lineHeight: 1.55,
+              fontSize: 14,
+            }}>{message.text}</div>
           ))}
         </div>
-        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {['What failed?', 'What blocks release?', 'Does this feel premium?', 'What should dev fix first?'].map((prompt) => (
-              <button key={prompt} style={secondaryChipStyle} onClick={() => setChatInput(prompt)}>{prompt}</button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <textarea
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Ask for honest feedback on the uploaded build…"
-              style={{
-                flex: 1,
-                minHeight: 82,
-                resize: 'vertical',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 16,
-                color: '#f5f7fb',
-                padding: '14px 16px',
-                outline: 'none',
-                fontSize: 13,
-              }}
-            />
-            <button style={primaryButtonStyle} onClick={() => void askAI()} disabled={!report || chatBusy}>{chatBusy ? 'Thinking…' : 'Ask AI'}</button>
-          </div>
+
+        <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+          {PROMPTS.map((prompt) => (
+            <button key={prompt} style={promptButtonStyle} onClick={() => void askAI(prompt)} disabled={!report || chatBusy}>{prompt}</button>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, marginTop: 12 }}>
+          <textarea
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder="Ask for honest feedback on the uploaded build…"
+            style={{
+              minHeight: 126,
+              resize: 'vertical',
+              borderRadius: 18,
+              border: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(255,255,255,0.03)',
+              color: '#f5f7fb',
+              padding: 16,
+              fontSize: 15,
+              outline: 'none',
+            }}
+          />
+          <button style={{ ...primaryButtonStyle, minWidth: 110 }} onClick={() => void askAI()} disabled={!report || chatBusy || !chatInput.trim()}>{chatBusy ? 'Thinking…' : 'Ask AI'}</button>
         </div>
       </div>
     </div>
@@ -321,143 +428,111 @@ async function safeReadText(file: File): Promise<string> {
   }
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function StatusBadge({ status }: { status: QueueFile['status'] }) {
-  const color = status === 'complete' ? '#7ff0b7' : status === 'failed' ? '#ff8f7a' : '#d9dcff'
-  const bg = status === 'complete' ? 'rgba(127,240,183,0.12)' : status === 'failed' ? 'rgba(255,143,122,0.12)' : 'rgba(140,149,255,0.12)'
-  return <span style={{ ...smallPillStyle, color, background: bg }}>{status}</span>
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div style={{ marginBottom: 14, marginTop: 4 }}>
-      <div style={{ color: '#ffffff', fontSize: 15, fontWeight: 700 }}>{title}</div>
-      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 4 }}>{subtitle}</div>
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ color: '#f4f6fb', fontSize: 16, fontWeight: 700 }}>{title}</div>
+      <div style={{ color: 'rgba(255,255,255,0.58)', fontSize: 12, marginTop: 4 }}>{subtitle}</div>
     </div>
   )
 }
 
 function EmptyHint({ text }: { text: string }) {
-  return <div style={{ color: 'rgba(255,255,255,0.46)', fontSize: 12, padding: 10 }}>{text}</div>
+  return <div style={{ color: 'rgba(255,255,255,0.46)', fontSize: 12 }}>{text}</div>
 }
 
-function severityBorder(severity: 'critical' | 'warning' | 'info') {
-  return severity === 'critical' ? 'rgba(255,122,104,0.34)' : severity === 'warning' ? 'rgba(255,194,92,0.3)' : 'rgba(125,166,255,0.22)'
-}
-
-function severityBg(severity: 'critical' | 'warning' | 'info') {
-  return severity === 'critical' ? 'rgba(255,122,104,0.12)' : severity === 'warning' ? 'rgba(255,194,92,0.12)' : 'rgba(125,166,255,0.12)'
-}
-
-function severityText(severity: 'critical' | 'warning' | 'info') {
-  return severity === 'critical' ? '#ff9f8d' : severity === 'warning' ? '#ffd07a' : '#9ec0ff'
+function StatusBadge({ status }: { status: QueueFile['status'] }) {
+  const tone = status === 'failed' ? '#ff8f7a' : status === 'complete' ? '#7ff0b7' : '#74d5ff'
+  return <div style={{ color: tone, fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{status}</div>
 }
 
 const paneStyle: React.CSSProperties = {
   padding: 18,
-  borderLeft: '1px solid rgba(255,255,255,0.06)',
-  display: 'flex',
-  flexDirection: 'column',
-  minWidth: 0,
-  overflow: 'hidden',
-}
-
-const listStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.02)',
-  border: '1px solid rgba(255,255,255,0.06)',
-  borderRadius: 18,
-  padding: 10,
-  display: 'grid',
-  gap: 10,
   overflow: 'auto',
-  minHeight: 0,
-}
-
-const rowButtonStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 10,
-  width: '100%',
-  padding: '12px 14px',
-  borderRadius: 14,
-  border: '1px solid rgba(255,255,255,0.06)',
-  cursor: 'pointer',
-  textAlign: 'left',
+  borderLeft: '1px solid rgba(255,255,255,0.06)',
 }
 
 const primaryButtonStyle: React.CSSProperties = {
-  border: '1px solid rgba(111,236,208,0.24)',
-  background: 'linear-gradient(180deg, rgba(88,220,197,0.22), rgba(58,171,154,0.16))',
-  color: '#dcfff5',
-  borderRadius: 14,
-  padding: '10px 14px',
-  fontSize: 12,
+  background: 'linear-gradient(180deg, rgba(74,219,185,0.22), rgba(74,219,185,0.12))',
+  color: '#f7fafc',
+  border: '1px solid rgba(111,236,208,0.34)',
+  borderRadius: 16,
+  padding: '12px 18px',
   fontWeight: 700,
   cursor: 'pointer',
 }
 
 const secondaryButtonStyle: React.CSSProperties = {
-  border: '1px solid rgba(255,255,255,0.08)',
   background: 'rgba(255,255,255,0.03)',
-  color: '#edf1f7',
-  borderRadius: 14,
-  padding: '10px 14px',
-  fontSize: 12,
-  fontWeight: 600,
+  color: '#eff3f8',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: 16,
+  padding: '12px 18px',
+  fontWeight: 700,
   cursor: 'pointer',
 }
 
-const secondaryChipStyle: React.CSSProperties = {
-  border: '1px solid rgba(255,255,255,0.08)',
-  background: 'rgba(255,255,255,0.03)',
-  color: '#dbe2ec',
-  borderRadius: 999,
+const promptButtonStyle: React.CSSProperties = {
+  ...secondaryButtonStyle,
+  textAlign: 'left',
+}
+
+const pillStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
   padding: '8px 12px',
-  fontSize: 11,
+  borderRadius: 999,
+  border: '1px solid rgba(111,236,208,0.22)',
+  background: 'rgba(111,236,208,0.08)',
+  color: '#8ef0d0',
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+}
+
+const listStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  borderRadius: 18,
+  border: '1px solid rgba(255,255,255,0.06)',
+  background: 'rgba(255,255,255,0.02)',
+  padding: 12,
+  marginTop: 12,
+}
+
+const rowButtonStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+  width: '100%',
+  textAlign: 'left',
+  padding: 12,
+  borderRadius: 16,
+  border: '1px solid rgba(255,255,255,0.06)',
+  background: 'transparent',
   cursor: 'pointer',
 }
 
 const scoreCardStyle: React.CSSProperties = {
-  padding: '16px 18px',
-  borderRadius: 18,
+  borderRadius: 16,
   border: '1px solid rgba(255,255,255,0.06)',
-  background: 'rgba(255,255,255,0.03)',
+  background: 'rgba(255,255,255,0.025)',
+  padding: 14,
 }
 
 const issueCardStyle: React.CSSProperties = {
-  padding: '14px',
   borderRadius: 16,
   border: '1px solid rgba(255,255,255,0.06)',
-  background: 'rgba(255,255,255,0.03)',
-}
-
-const pillStyle: React.CSSProperties = {
-  borderRadius: 999,
-  padding: '6px 10px',
-  fontSize: 10,
-  letterSpacing: '0.1em',
-  textTransform: 'uppercase',
-  fontWeight: 700,
-  color: '#8ce9d2',
-  background: 'rgba(111,236,208,0.12)',
-  border: '1px solid rgba(111,236,208,0.18)',
-}
-
-const smallPillStyle: React.CSSProperties = {
-  borderRadius: 999,
-  padding: '5px 8px',
-  fontSize: 10,
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.08em',
+  background: 'rgba(255,255,255,0.025)',
+  padding: 12,
 }
