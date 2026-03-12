@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import QualityGatePanel from "@/components/QualityGatePanel";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -30,12 +31,18 @@ export default function StudioPage() {
     return localStorage.getItem("studio:centerOpen") !== "false";
   });
   const [isDragging, setIsDragging] = useState(false);
+  const [rightView, setRightView] = useState<"editor" | "quality">(() => {
+    if (typeof window === "undefined") return "editor";
+    const saved = localStorage.getItem("studio:rightView");
+    return saved === "quality" ? "quality" : "editor";
+  });
 
   // Persist panel state on every change
   useEffect(() => { localStorage.setItem("studio:leftW",      String(leftW));      }, [leftW]);
   useEffect(() => { localStorage.setItem("studio:centerW",    String(centerW));    }, [centerW]);
   useEffect(() => { localStorage.setItem("studio:leftOpen",   String(leftOpen));   }, [leftOpen]);
   useEffect(() => { localStorage.setItem("studio:centerOpen", String(centerOpen)); }, [centerOpen]);
+  useEffect(() => { localStorage.setItem("studio:rightView", rightView); }, [rightView]);
 
   // Browser panel state
   const [inputUrl,       setInputUrl]       = useState("");
@@ -206,14 +213,26 @@ export default function StudioPage() {
 
       <ResizeHandle onPointerDown={startDrag("center-right")} active={isDragging} />
 
-      {/* ── RIGHT — EditorPro ────────────────────────────────────────────────── */}
+      {/* ── RIGHT — EditorPro / Quality Gate ─────────────────────────────────── */}
       <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
-        <PanelShell title="EditorPro" isCollapsed={false}>
-          <iframe
-            src="/editor"
-            style={{ width: "100%", height: "100%", border: "none", display: "block" }}
-            title="EditorPro"
-          />
+        <PanelShell
+          title={
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <TabChip label="EditorPro" active={rightView === "editor"} onClick={() => setRightView("editor")} />
+              <TabChip label="Quality Gate" active={rightView === "quality"} onClick={() => setRightView("quality")} />
+            </div>
+          }
+          isCollapsed={false}
+        >
+          {rightView === "editor" ? (
+            <iframe
+              src="/editor"
+              style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+              title="EditorPro"
+            />
+          ) : (
+            <QualityGatePanel />
+          )}
         </PanelShell>
       </div>
 
@@ -227,7 +246,7 @@ export default function StudioPage() {
 // ── PanelShell ─────────────────────────────────────────────────────────────────
 
 function PanelShell({ children, title, onCollapse, isCollapsed: _ic, toolbar }: {
-  children: React.ReactNode; title: string;
+  children: React.ReactNode; title: React.ReactNode;
   onCollapse?: () => void; isCollapsed: boolean;
   toolbar?: React.ReactNode;
 }) {
@@ -304,6 +323,30 @@ function NavBtn({ onClick, label, disabled = false }: {
       cursor: disabled ? "not-allowed" : "pointer",
       fontSize: 12, padding: "2px 4px", borderRadius: 3,
     }}>{label}</button>
+  );
+}
+
+function TabChip({ label, active, onClick }: {
+  label: string; active: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        border: `1px solid ${active ? "rgba(111,236,208,0.24)" : "rgba(255,255,255,0.08)"}`,
+        background: active ? "linear-gradient(180deg, rgba(88,220,197,0.18), rgba(58,171,154,0.12))" : "rgba(255,255,255,0.03)",
+        color: active ? "#defcf3" : "rgba(255,255,255,0.55)",
+        borderRadius: 999,
+        padding: "6px 10px",
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 

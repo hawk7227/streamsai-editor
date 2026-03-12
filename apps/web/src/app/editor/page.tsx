@@ -139,7 +139,7 @@ export default function EditorPro() {
   useEffect(() => {
     const avail = browsersFor(dev);
     if (!avail.includes(bid)) setBid(avail[0]);
-  }, [did]);
+  }, [bid, dev]);
 
   // Scale
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -210,8 +210,8 @@ export default function EditorPro() {
     setGhBusy(false);
   }, [ghToken]);
 
-  useEffect(() => { if (ghToken && ghRepos.length === 0) fetchRepos(); }, [ghToken]);
-  useEffect(() => { if (ghToken && ghRepo) fetchFiles(ghRepo, ghBranch); }, [ghToken, ghRepo, ghBranch]);
+  useEffect(() => { if (ghToken && ghRepos.length === 0) fetchRepos(); }, [fetchRepos, ghRepos.length, ghToken]);
+  useEffect(() => { if (ghToken && ghRepo) fetchFiles(ghRepo, ghBranch); }, [fetchFiles, ghBranch, ghRepo, ghToken]);
 
   // ── PULL ─────────────────────────────────────────────────────────────────
   const pull = useCallback(async () => {
