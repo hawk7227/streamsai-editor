@@ -13,7 +13,8 @@
     "build:chat": "npm run build --workspace=apps/mobile-chat",
     "build": "npm run build:chat && npm run build:web",
     "typecheck": "npm run typecheck --workspace=apps/web && npm run typecheck --workspace=apps/mobile-chat",
-    "lint": "npm run lint --workspace=apps/web && npm run lint --workspace=apps/mobile-chat"
+    "lint": "npm run lint --workspace=apps/web && npm run lint --workspace=apps/mobile-chat",
+    "quality-gate:ci": "node apps/web/scripts/quality-gate-ci.mjs"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

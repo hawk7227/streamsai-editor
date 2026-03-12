@@ -1,0 +1,115 @@
+{
+  "overall": 91,
+  "files": 56,
+  "issues": [
+    {
+      "fileName": "apps/mobile-chat/src/hooks/useSendMessage.ts",
+      "gate": "code",
+      "severity": "warning",
+      "title": "any found",
+      "detail": "Loose type found.",
+      "fix": "Replace any."
+    },
+    {
+      "fileName": "apps/web/scripts/quality-gate-ci.mjs",
+      "gate": "release",
+      "severity": "warning",
+      "title": "TODO found",
+      "detail": "TODO / FIXME marker found.",
+      "fix": "Resolve it before release."
+    },
+    {
+      "fileName": "apps/web/src/app/api/editor/route.ts",
+      "gate": "code",
+      "severity": "warning",
+      "title": "any found",
+      "detail": "Loose type found.",
+      "fix": "Replace any."
+    },
+    {
+      "fileName": "apps/web/src/app/editor/page.tsx",
+      "gate": "code",
+      "severity": "warning",
+      "title": "any found",
+      "detail": "Loose type found.",
+      "fix": "Replace any."
+    },
+    {
+      "fileName": "apps/web/src/app/studio/page.tsx",
+      "gate": "code",
+      "severity": "warning",
+      "title": "any found",
+      "detail": "Loose type found.",
+      "fix": "Replace any."
+    },
+    {
+      "fileName": "apps/web/src/lib/quality-gate/server.ts",
+      "gate": "release",
+      "severity": "warning",
+      "title": "TODO found",
+      "detail": "TODO / FIXME marker found.",
+      "fix": "Resolve it before release."
+    },
+    {
+      "fileName": "apps/web/src/lib/quality-gate/server.ts",
+      "gate": "code",
+      "severity": "warning",
+      "title": "any found",
+      "detail": "Loose type found.",
+      "fix": "Replace any."
+    },
+    {
+      "fileName": "quality-gate-report.json",
+      "gate": "release",
+      "severity": "warning",
+      "title": "TODO found",
+      "detail": "TODO / FIXME marker found.",
+      "fix": "Resolve it before release."
+    }
+  ],
+  "gates": [
+    {
+      "gate": "structure",
+      "score": 100,
+      "passed": true,
+      "issues": 0
+    },
+    {
+      "gate": "code",
+      "score": 60,
+      "passed": true,
+      "issues": 5
+    },
+    {
+      "gate": "ux",
+      "score": 100,
+      "passed": true,
+      "issues": 0
+    },
+    {
+      "gate": "mobile",
+      "score": 100,
+      "passed": true,
+      "issues": 0
+    },
+    {
+      "gate": "performance",
+      "score": 100,
+      "passed": true,
+      "issues": 0
+    },
+    {
+      "gate": "reliability",
+      "score": 100,
+      "passed": true,
+      "issues": 0
+    },
+    {
+      "gate": "release",
+      "score": 76,
+      "passed": true,
+      "issues": 3
+    }
+  ],
+  "createdAt": "2026-03-12T05:22:59.854Z"
+}
