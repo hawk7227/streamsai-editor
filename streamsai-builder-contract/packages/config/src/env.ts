@@ -1,0 +1,2 @@
+export function getEnv(name:string,fallback?:string):string{const value=process.env[name]??fallback;if(value===undefined) throw new Error(`Missing required env: ${name}`);return value;}
+export function getEnvNumber(name:string,fallback:number):number{const raw=process.env[name]; if(!raw) return fallback; const n=Number(raw); if(Number.isNaN(n)) throw new Error(`Env ${name} must be numeric`); return n;}

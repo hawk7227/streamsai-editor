@@ -1,0 +1,1 @@
+import type { PipelineFinalResult } from "@streamsai/shared"; export class ResponseFormatter{ format(result:PipelineFinalResult){ return {section1:result.explanation, section2:result.plan, section3:result.fileActions}; }}

@@ -1,0 +1,1 @@
+export class ProjectRulesEngine{ checkPath(path:string){ if(path.startsWith("components/")||path.startsWith("app/")||path.startsWith("lib/")||path.startsWith("src/")) return []; return [`Path ${path} violates file placement rule`]; }}

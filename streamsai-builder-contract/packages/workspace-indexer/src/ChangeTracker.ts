@@ -1,0 +1,1 @@
+export type ChangeRecord={path:string;changedAt:string}; const changes=new Map<string,ChangeRecord[]>(); export function recordChange(projectId:string,path:string){const list=changes.get(projectId)??[]; list.push({path,changedAt:new Date().toISOString()}); changes.set(projectId,list); return list;}

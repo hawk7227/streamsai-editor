@@ -1,0 +1,1 @@
+export type ApiError={code:string;message:string;details?:unknown}; export type HealthResponse={ok:true;service:string;version:string;now:string}; export type StructuredError={ok:false;error:ApiError;requestId?:string};

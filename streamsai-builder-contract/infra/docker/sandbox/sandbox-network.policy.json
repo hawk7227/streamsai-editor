@@ -1,0 +1,10 @@
+{
+  "defaultMode": "restricted",
+  "allowlist": [
+    "npmjs.org",
+    "registry.npmjs.org",
+    "github.com",
+    "raw.githubusercontent.com"
+  ],
+  "denyInternalNetworks": true
+}

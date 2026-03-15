@@ -1,0 +1,1 @@
+const audits=new Map<string,any[]>(); export class PromptAuditLog{ record(runId:string,data:any){ const list=audits.get(runId)??[]; list.push({...data,at:new Date().toISOString()}); audits.set(runId,list); return list[list.length-1]; }}

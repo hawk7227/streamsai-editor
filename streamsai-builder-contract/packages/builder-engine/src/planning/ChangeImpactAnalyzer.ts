@@ -1,0 +1,1 @@
+export class ChangeImpactAnalyzer{ analyze(index:any, taskType:string){ return {taskType, likelyAffectedAreas:Array.isArray(index?.routeGraph)?index.routeGraph.slice(0,5):[], dependencyEdges:Array.isArray(index?.dependencyGraph)?index.dependencyGraph.slice(0,10):[]}; }}

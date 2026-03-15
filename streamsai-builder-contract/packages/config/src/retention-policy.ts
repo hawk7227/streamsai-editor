@@ -1,0 +1,1 @@
+import { getEnvNumber } from "./env"; export function loadRetentionPolicy(){return {artifactRetentionDays:getEnvNumber("ARTIFACT_RETENTION_DAYS",30),maxArtifactBytes:getEnvNumber("ARTIFACT_MAX_BYTES",5*1024*1024)}}

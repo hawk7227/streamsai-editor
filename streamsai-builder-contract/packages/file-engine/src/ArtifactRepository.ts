@@ -1,0 +1,1 @@
+const artifacts=new Map<string,unknown[]>(); export class ArtifactRepository{put(runId:string,artifact:unknown){const list=artifacts.get(runId)??[]; list.push(artifact); artifacts.set(runId,list); return artifact;} list(runId:string){return artifacts.get(runId)??[];}}

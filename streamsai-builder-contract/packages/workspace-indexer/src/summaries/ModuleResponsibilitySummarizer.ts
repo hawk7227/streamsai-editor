@@ -1,0 +1,1 @@
+export function summarizeModuleResponsibility(path:string){if(/route|page/.test(path)) return "route/page module"; if(/store/.test(path)) return "state module"; if(/service/.test(path)) return "service module"; return "application module";}

@@ -1,0 +1,1018 @@
+{
+  "constraints": {
+    "appsWebUntouched": true,
+    "studioPageUntouched": true,
+    "iframeHostUntouched": true,
+    "workspaceShellUntouched": true
+  },
+  "files": [
+    {
+      "path": ".env.example",
+      "purpose": "Repository file for root",
+      "subsystem": "root",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "README.md",
+      "purpose": "Repository file for root",
+      "subsystem": "root",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/api/package.json",
+      "purpose": "Repository file for api-layer",
+      "subsystem": "api-layer",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/api/src/bootstrap.ts",
+      "purpose": "Repository file for api-layer",
+      "subsystem": "api-layer",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/api/src/index.ts",
+      "purpose": "Repository file for api-layer",
+      "subsystem": "api-layer",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/api/tsconfig.json",
+      "purpose": "Repository file for api-layer",
+      "subsystem": "api-layer",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/mobile-chat/index.html",
+      "purpose": "Repository file for chat-ui",
+      "subsystem": "chat-ui",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/mobile-chat/package.json",
+      "purpose": "Repository file for chat-ui",
+      "subsystem": "chat-ui",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/mobile-chat/src/App.tsx",
+      "purpose": "Repository file for chat-ui",
+      "subsystem": "chat-ui",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/mobile-chat/src/main.tsx",
+      "purpose": "Repository file for chat-ui",
+      "subsystem": "chat-ui",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/mobile-chat/src/styles/app.css",
+      "purpose": "Repository file for chat-ui",
+      "subsystem": "chat-ui",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/mobile-chat/src/styles/mobile.css",
+      "purpose": "Repository file for chat-ui",
+      "subsystem": "chat-ui",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/mobile-chat/tsconfig.json",
+      "purpose": "Repository file for chat-ui",
+      "subsystem": "chat-ui",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/mobile-chat/tsconfig.node.json",
+      "purpose": "Repository file for chat-ui",
+      "subsystem": "chat-ui",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/mobile-chat/vite.config.ts",
+      "purpose": "Repository file for chat-ui",
+      "subsystem": "chat-ui",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/preview-runner/package.json",
+      "purpose": "Repository file for preview-runner",
+      "subsystem": "preview-runner",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/preview-runner/src/index.ts",
+      "purpose": "Repository file for preview-runner",
+      "subsystem": "preview-runner",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/preview-runner/tsconfig.json",
+      "purpose": "Repository file for preview-runner",
+      "subsystem": "preview-runner",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/worker/package.json",
+      "purpose": "Repository file for worker-runtime",
+      "subsystem": "worker-runtime",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/worker/src/bootstrap.ts",
+      "purpose": "Repository file for worker-runtime",
+      "subsystem": "worker-runtime",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/worker/src/index.ts",
+      "purpose": "Repository file for worker-runtime",
+      "subsystem": "worker-runtime",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/worker/src/processors/generation.processor.ts",
+      "purpose": "Repository file for worker-runtime",
+      "subsystem": "worker-runtime",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "apps/worker/tsconfig.json",
+      "purpose": "Repository file for worker-runtime",
+      "subsystem": "worker-runtime",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "docs/reports/omissions-and-simplifications.md",
+      "purpose": "Repository file for documentation",
+      "subsystem": "documentation",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "docs/reports/runtime-verification-boundaries.md",
+      "purpose": "Repository file for documentation",
+      "subsystem": "documentation",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "infra/compose/docker-compose.dev.yml",
+      "purpose": "Repository file for infrastructure",
+      "subsystem": "infrastructure",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "infra/db/migrations/0001_init.sql",
+      "purpose": "Repository file for infrastructure",
+      "subsystem": "infrastructure",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "infra/db/seeds/knowledge/nextjs-pack.json",
+      "purpose": "Repository file for infrastructure",
+      "subsystem": "infrastructure",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "infra/db/seeds/knowledge/react-pack.json",
+      "purpose": "Repository file for infrastructure",
+      "subsystem": "infrastructure",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "infra/docker/preview-runner.Dockerfile",
+      "purpose": "Repository file for infrastructure",
+      "subsystem": "infrastructure",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "infra/docker/sandbox/sandbox-network.policy.json",
+      "purpose": "Repository file for infrastructure",
+      "subsystem": "infrastructure",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "infra/docker/worker.Dockerfile",
+      "purpose": "Repository file for infrastructure",
+      "subsystem": "infrastructure",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "package.json",
+      "purpose": "Repository file for root",
+      "subsystem": "root",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/ai-gateway/package.json",
+      "purpose": "Repository file for ai-gateway",
+      "subsystem": "ai-gateway",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/ai-gateway/src/index.ts",
+      "purpose": "Repository file for ai-gateway",
+      "subsystem": "ai-gateway",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/ai-gateway/src/providers/anthropic.ts",
+      "purpose": "Repository file for ai-gateway",
+      "subsystem": "ai-gateway",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/ai-gateway/src/providers/openai.ts",
+      "purpose": "Repository file for ai-gateway",
+      "subsystem": "ai-gateway",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/ai-gateway/src/routing/model-router.ts",
+      "purpose": "Repository file for ai-gateway",
+      "subsystem": "ai-gateway",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/ai-gateway/src/streaming/stream-response.ts",
+      "purpose": "Repository file for ai-gateway",
+      "subsystem": "ai-gateway",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/ai-gateway/src/token-usage/token-counter.ts",
+      "purpose": "Repository file for ai-gateway",
+      "subsystem": "ai-gateway",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/package.json",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/context/ContextSelector.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/context/PromptAuditLog.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/context/VersionAwareContext.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/execution/ArtifactWriter.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/execution/FileActionPlanner.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/execution/PatchApplier.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/execution/PatchGenerator.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/execution/ResponseFormatter.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/index.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/pipeline/BuilderPipeline.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/pipeline/stage-recovery.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/pipeline/stage-runner.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/pipeline/stage-timeouts.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/planning/ChangeImpactAnalyzer.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/planning/ExecutionPlanner.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/planning/RequestInterpreter.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/planning/RiskAssessor.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/planning/StrategyMemory.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/planning/StrategySelector.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/planning/TaskClassifier.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/rules/ProjectRulesEngine.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/builder-engine/src/rules/default-rules.ts",
+      "purpose": "Repository file for builder-pipeline",
+      "subsystem": "builder-pipeline",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/config/package.json",
+      "purpose": "Repository file for config",
+      "subsystem": "config",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/config/src/env.ts",
+      "purpose": "Repository file for config",
+      "subsystem": "config",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/config/src/index.ts",
+      "purpose": "Repository file for config",
+      "subsystem": "config",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/config/src/profiles.ts",
+      "purpose": "Repository file for config",
+      "subsystem": "config",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/config/src/retention-policy.ts",
+      "purpose": "Repository file for config",
+      "subsystem": "config",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/config/src/sandbox-policy.ts",
+      "purpose": "Repository file for config",
+      "subsystem": "config",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/config/src/timeouts.ts",
+      "purpose": "Repository file for config",
+      "subsystem": "config",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/package.json",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/src/ArtifactRepository.ts",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/src/CheckpointManager.ts",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/src/ConflictDetector.ts",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/src/FileRepository.ts",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/src/LockCoordinator.ts",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/src/RollbackManager.ts",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/src/VersionManager.ts",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/src/index.ts",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/file-engine/src/retention.ts",
+      "purpose": "Repository file for file-engine",
+      "subsystem": "file-engine",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/observability/package.json",
+      "purpose": "Repository file for observability",
+      "subsystem": "observability",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/observability/src/diagnostics.ts",
+      "purpose": "Repository file for observability",
+      "subsystem": "observability",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/observability/src/health.ts",
+      "purpose": "Repository file for observability",
+      "subsystem": "observability",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/observability/src/index.ts",
+      "purpose": "Repository file for observability",
+      "subsystem": "observability",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/observability/src/logger.ts",
+      "purpose": "Repository file for observability",
+      "subsystem": "observability",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/project-memory/package.json",
+      "purpose": "Repository file for project-memory",
+      "subsystem": "project-memory",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/project-memory/src/MemoryCompactor.ts",
+      "purpose": "Repository file for project-memory",
+      "subsystem": "project-memory",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/project-memory/src/MemoryStore.ts",
+      "purpose": "Repository file for project-memory",
+      "subsystem": "project-memory",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/project-memory/src/MemorySummarizer.ts",
+      "purpose": "Repository file for project-memory",
+      "subsystem": "project-memory",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/project-memory/src/MemoryUpdater.ts",
+      "purpose": "Repository file for project-memory",
+      "subsystem": "project-memory",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/project-memory/src/index.ts",
+      "purpose": "Repository file for project-memory",
+      "subsystem": "project-memory",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/project-memory/src/provenance.ts",
+      "purpose": "Repository file for project-memory",
+      "subsystem": "project-memory",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/queue-core/package.json",
+      "purpose": "Repository file for queue-worker",
+      "subsystem": "queue-worker",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/queue-core/src/backoff.ts",
+      "purpose": "Repository file for queue-worker",
+      "subsystem": "queue-worker",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/queue-core/src/bullmq.ts",
+      "purpose": "Repository file for queue-worker",
+      "subsystem": "queue-worker",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/queue-core/src/index.ts",
+      "purpose": "Repository file for queue-worker",
+      "subsystem": "queue-worker",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/queue-core/src/priorities.ts",
+      "purpose": "Repository file for queue-worker",
+      "subsystem": "queue-worker",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/queue-core/src/queue-factory.ts",
+      "purpose": "Repository file for queue-worker",
+      "subsystem": "queue-worker",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/queue-core/src/redis.ts",
+      "purpose": "Repository file for queue-worker",
+      "subsystem": "queue-worker",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/queue-core/src/retry-policy.ts",
+      "purpose": "Repository file for queue-worker",
+      "subsystem": "queue-worker",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/package.json",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/index.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/ingestion/chunker.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/ingestion/embedding-lifecycle.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/ingestion/ingest-pack.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/ingestion/version-compatibility.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/packs/README.md",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/packs/manifest.schema.json",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/retrieval/ranker.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/retrieval/search.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/retrieval/version-aware-match.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/storage/EmbeddingStore.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/storage/KnowledgePackStore.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/retrieval-core/src/storage/VectorSearch.ts",
+      "purpose": "Repository file for retrieval",
+      "subsystem": "retrieval",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/package.json",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/src/constants/limits.ts",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/src/constants/queues.ts",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/src/constants/timeouts.ts",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/src/index.ts",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/src/types/api.ts",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/src/types/builder.ts",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/src/types/graph.ts",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/src/types/jobs.ts",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/shared/src/types/manifest.ts",
+      "purpose": "Repository file for shared",
+      "subsystem": "shared",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/package.json",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/ValidationEngine.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/checks/config-check.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/checks/dependency-compat-check.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/checks/env-check.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/checks/import-check.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/checks/path-check.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/checks/route-check.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/checks/schema-check.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/checks/type-check.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/index.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/repair/RepairEngine.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/repair/repair-catalog.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/repair/safe-repair-policy.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/validators/src/reports/severity.ts",
+      "purpose": "Repository file for validation-repair",
+      "subsystem": "validation-repair",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/package.json",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/ChangeTracker.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/DependencyGraphBuilder.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/FileIndexer.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/FileRelationshipGraphBuilder.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/IncrementalUpdateEngine.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/ModuleGraphBuilder.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/RouteGraphBuilder.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/SemanticIndexer.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/index.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/summaries/FileSummarizer.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "packages/workspace-indexer/src/summaries/ModuleResponsibilitySummarizer.ts",
+      "purpose": "Repository file for workspace-indexing",
+      "subsystem": "workspace-indexing",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "purpose": "Repository file for root",
+      "subsystem": "root",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/bootstrap.ps1",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/bootstrap.sh",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/build-semantic-index.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/cleanup-artifacts.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/healthcheck.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/migrate.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/refresh-semantic-index.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/reindex-knowledge.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/seed-knowledge.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/smoke-test.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/start-preview.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/start-queue.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/start-worker.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "scripts/verify-env.ts",
+      "purpose": "Repository file for verification",
+      "subsystem": "verification",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "tsconfig.base.json",
+      "purpose": "Repository file for root",
+      "subsystem": "root",
+      "status": "fully_implemented"
+    },
+    {
+      "path": "turbo.json",
+      "purpose": "Repository file for root",
+      "subsystem": "root",
+      "status": "fully_implemented"
+    }
+  ]
+}

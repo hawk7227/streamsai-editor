@@ -1,0 +1,1 @@
+import { StrategyMemory } from "./StrategyMemory"; export class StrategySelector{ constructor(private readonly memory=new StrategyMemory()){} select(projectId:string,taskType:string){ const prior=this.memory.list(projectId).filter((x)=>x.taskType===taskType); const successful=prior.find((x)=>x.validationOutcome!=="error"); return successful?.strategy??"default-safe-patch"; }}

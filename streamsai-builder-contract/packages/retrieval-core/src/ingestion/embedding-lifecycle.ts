@@ -1,0 +1,1 @@
+export const currentEmbeddingModelVersion=()=>process.env.EMBEDDING_MODEL||"text-embedding-3-small"; export function shouldReindex(existingModel:string,incomingModel:string,existingPackVersion:string,incomingPackVersion:string){return existingModel!==incomingModel||existingPackVersion!==incomingPackVersion;}

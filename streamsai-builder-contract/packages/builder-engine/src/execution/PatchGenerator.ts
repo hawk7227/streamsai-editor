@@ -1,0 +1,1 @@
+import type { FileAction } from "@streamsai/shared"; export class PatchGenerator{ generate(actions:FileAction[]){ return actions.map(a=>({path:a.path,patch:a.content?`+++ ${a.path}\n${a.content}`:`DELETE ${a.path}`})); }}

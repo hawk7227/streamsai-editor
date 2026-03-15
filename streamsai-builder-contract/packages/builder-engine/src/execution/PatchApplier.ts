@@ -1,0 +1,1 @@
+import { FileRepository } from "@streamsai/file-engine"; import type { FileAction } from "@streamsai/shared"; export class PatchApplier{ constructor(private readonly files=new FileRepository()){} apply(root:string,actions:FileAction[]){ this.files.apply(root,actions); return {applied:actions.length}; }}

@@ -1,0 +1,14 @@
+{
+  "id": "react",
+  "version": "1.0.0",
+  "schemaVersion": "1",
+  "source": "seed",
+  "scope": "framework",
+  "documents": [
+    {
+      "id": "hooks",
+      "title": "React Hooks",
+      "content": "useState useEffect useMemo useCallback refs components rendering"
+    }
+  ]
+}

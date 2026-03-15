@@ -1,0 +1,1 @@
+export type BuildTargetProfile="local"|"vercel"|"worker"|"preview"; export const PROFILES={local:{name:"local",notes:"developer local profile"},vercel:{name:"vercel",notes:"frontend/API edge deployment profile"},worker:{name:"worker",notes:"background worker runtime"},preview:{name:"preview",notes:"preview sandbox runtime"}} as const;

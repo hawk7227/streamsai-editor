@@ -1,0 +1,1 @@
+import { ArtifactRepository } from "@streamsai/file-engine"; export class ArtifactWriter{ constructor(private readonly repo=new ArtifactRepository()){} write(runId:string,artifact:unknown){ return this.repo.put(runId,artifact); }}

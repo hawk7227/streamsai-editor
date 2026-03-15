@@ -1,0 +1,1 @@
+import { createWorker } from "@streamsai/queue-core/src/bullmq"; import { QUEUES } from "@streamsai/shared"; import { generationProcessor } from "./processors/generation.processor"; createWorker(QUEUES.generation,generationProcessor,Number(process.env.WORKER_CONCURRENCY_GENERATION||2)); console.log("worker bootstrapped");

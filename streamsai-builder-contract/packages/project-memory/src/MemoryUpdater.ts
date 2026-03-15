@@ -1,0 +1,1 @@
+import { MemoryStore } from "./MemoryStore"; export class MemoryUpdater{constructor(private readonly store=new MemoryStore()){} updateFromPlan(projectId:string,plan:Record<string,unknown>){Object.entries(plan).forEach(([k,v])=>this.store.put(projectId,k,v,true)); return this.store.list(projectId);}}

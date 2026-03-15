@@ -1,0 +1,1 @@
+import { MemoryStore } from "./MemoryStore"; export class MemoryCompactor{constructor(private readonly store=new MemoryStore()){} compact(projectId:string){const dedup=new Map(this.store.list(projectId).map(e=>[e.key,e])); return [...dedup.values()];}}

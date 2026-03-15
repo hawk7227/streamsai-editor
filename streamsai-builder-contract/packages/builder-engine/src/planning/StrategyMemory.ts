@@ -1,0 +1,1 @@
+const strategies=new Map<string,any[]>(); export class StrategyMemory{ record(projectId:string,artifact:any){const list=strategies.get(projectId)??[]; list.push({...artifact,recordedAt:new Date().toISOString()}); strategies.set(projectId,list); return artifact;} list(projectId:string){return strategies.get(projectId)??[];} }

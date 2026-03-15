@@ -1,0 +1,1 @@
+type VectorRecord={key:string;embeddingModel:string;packVersion:string;vector:number[];text:string}; const vectors=new Map<string,VectorRecord>(); export class EmbeddingStore{put(record:VectorRecord){vectors.set(record.key,record); return record;} list(){return [...vectors.values()];}}

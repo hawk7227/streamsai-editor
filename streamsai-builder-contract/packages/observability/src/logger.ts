@@ -1,0 +1,1 @@
+type LogLevel="debug"|"info"|"warn"|"error"; export function log(level:LogLevel,event:string,context:Record<string,unknown>={}){console.log(JSON.stringify({ts:new Date().toISOString(),level,event,...context}))}

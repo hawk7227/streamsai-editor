@@ -1,0 +1,1 @@
+import type { GatewayPrompt } from "../index"; export function routeModel(prompt:GatewayPrompt){ if(prompt.preferredProvider==="anthropic") return {provider:"anthropic",model:"claude-3-5-sonnet"}; if(prompt.purpose==="generation"||prompt.purpose==="repair") return {provider:"openai",model:"gpt-4.1"}; return {provider:"openai",model:"gpt-4.1-mini"}; }

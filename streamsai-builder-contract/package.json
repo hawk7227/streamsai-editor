@@ -1,0 +1,31 @@
+{
+  "name": "streamsai-builder-platform",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:mobile-chat": "pnpm --filter mobile-chat dev",
+    "dev:api": "pnpm --filter @streamsai/api dev",
+    "dev:worker": "pnpm --filter @streamsai/worker dev",
+    "dev:preview": "pnpm --filter @streamsai/preview-runner dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "migrate": "tsx scripts/migrate.ts",
+    "seed:knowledge": "tsx scripts/seed-knowledge.ts",
+    "reindex:knowledge": "tsx scripts/reindex-knowledge.ts",
+    "index:semantic": "tsx scripts/build-semantic-index.ts",
+    "refresh:semantic": "tsx scripts/refresh-semantic-index.ts",
+    "start:queue": "tsx scripts/start-queue.ts",
+    "start:worker": "tsx scripts/start-worker.ts",
+    "start:preview": "tsx scripts/start-preview.ts",
+    "smoke": "tsx scripts/smoke-test.ts",
+    "healthcheck": "tsx scripts/healthcheck.ts",
+    "verify-env": "tsx scripts/verify-env.ts",
+    "manifest": "tsx scripts/generate-build-manifest.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

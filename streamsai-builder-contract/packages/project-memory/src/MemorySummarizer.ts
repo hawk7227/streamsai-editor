@@ -1,0 +1,1 @@
+import { MemoryStore } from "./MemoryStore"; export class MemorySummarizer{constructor(private readonly store=new MemoryStore()){} summarize(projectId:string):string{return this.store.list(projectId).map(e=>`${e.key}: ${JSON.stringify(e.value)}`).join("\n");}}

@@ -1,0 +1,14 @@
+{
+  "id": "nextjs",
+  "version": "1.0.0",
+  "schemaVersion": "1",
+  "source": "seed",
+  "scope": "framework",
+  "documents": [
+    {
+      "id": "app-router",
+      "title": "Next App Router",
+      "content": "app router layouts pages server components client components route handlers"
+    }
+  ]
+}

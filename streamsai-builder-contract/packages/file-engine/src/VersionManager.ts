@@ -1,0 +1,1 @@
+const versions=new Map<string,Array<{content:string;at:string}>>(); export class VersionManager{push(path:string,content:string){const list=versions.get(path)??[]; list.push({content,at:new Date().toISOString()}); versions.set(path,list); return list[list.length-1];} list(path:string){return versions.get(path)??[];}}

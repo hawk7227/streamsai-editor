@@ -1,0 +1,1 @@
+import { SemanticIndexer } from "./SemanticIndexer"; export class IncrementalUpdateEngine{constructor(private readonly indexer=new SemanticIndexer()){} update(projectId:string,workspaceRoot:string){return this.indexer.build(projectId,workspaceRoot);}}

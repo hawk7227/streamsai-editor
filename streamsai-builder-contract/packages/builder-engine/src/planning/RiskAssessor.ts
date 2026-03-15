@@ -1,0 +1,1 @@
+export class RiskAssessor{ assess(taskType:string, impact:any){ const score=(impact?.dependencyEdges?.length??0)+((taskType==="schema_update"||taskType==="route_update")?5:1); if(score>8) return "high"; if(score>3) return "moderate"; return "low"; }}

@@ -1,0 +1,1 @@
+import { CheckpointManager } from "./CheckpointManager"; export class RollbackManager{constructor(private readonly checkpoints=new CheckpointManager()){} rollbackToLatest(projectId:string){return this.checkpoints.latest(projectId);}}

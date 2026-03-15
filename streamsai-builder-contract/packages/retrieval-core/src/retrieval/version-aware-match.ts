@@ -1,0 +1,1 @@
+export function versionAwareMatch(installedVersion?:string,candidateVersion?:string){if(!installedVersion||!candidateVersion) return true; return installedVersion.split(".")[0]===candidateVersion.split(".")[0];}
