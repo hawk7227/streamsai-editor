@@ -1,0 +1,13 @@
+{
+  "files": [
+    "apps/mobile-chat/index.html",
+    "apps/mobile-chat/package.json",
+    "apps/mobile-chat/src/App.tsx",
+    "apps/mobile-chat/src/main.tsx",
+    "apps/mobile-chat/src/styles/app.css",
+    "apps/mobile-chat/src/styles/mobile.css",
+    "apps/mobile-chat/tsconfig.json",
+    "apps/mobile-chat/tsconfig.node.json",
+    "apps/mobile-chat/vite.config.ts"
+  ]
+}
