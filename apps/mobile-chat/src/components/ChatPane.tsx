@@ -32,60 +32,46 @@ export function ChatPane() {
         flexShrink: 0,
         background: color.bgElevated,
         borderBottom: `1px solid ${color.border}`,
-        paddingTop: 'env(safe-area-inset-top, 0px)',
       }}>
         <div style={{
           display: 'flex', alignItems: 'center',
-          height: 52,
+          height: 36,
           paddingLeft: spacing[2],
-          paddingRight: spacing[4],
+          paddingRight: spacing[3],
           gap: spacing[2],
         }}>
-          {/* Hamburger */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             style={{
-              width: 44, height: 44, flexShrink: 0,
+              width: 32, height: 32, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'none', border: 'none', color: color.accent,
-              borderRadius: radius.md,
+              background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)',
+              borderRadius: radius.sm,
             }}
           >
-            <AlignLeft size={22} strokeWidth={2} />
+            <AlignLeft size={16} strokeWidth={2} />
           </button>
-
-          {/* Title */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontSize: font.size.md, fontWeight: font.weight.semibold,
-              color: color.text, lineHeight: 1.2,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {thread.title}
-            </div>
-            <div style={{
-              fontSize: font.size.xs, color: color.textSub, marginTop: 1,
-              display: 'flex', alignItems: 'center', gap: 4,
-            }}>
-              <Zap size={9} color={color.accent} />
-              {MODELS[thread.model]?.label ?? thread.model}
-            </div>
+          <div style={{
+            flex: 1, minWidth: 0,
+            fontSize: font.size.sm, fontWeight: font.weight.medium,
+            color: 'rgba(255,255,255,0.7)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {thread.title}
           </div>
-
-          {/* Rename */}
           <button
             onClick={() => {
               const title = window.prompt('Rename conversation:', thread.title)
               if (title?.trim()) useChatStore.getState().updateThread(thread.id, { title: title.trim() })
             }}
             style={{
-              width: 44, height: 44, flexShrink: 0,
+              width: 28, height: 28, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'none', border: 'none', color: color.textSub,
-              borderRadius: radius.md,
+              background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)',
+              borderRadius: radius.sm,
             }}
           >
-            <Pencil size={17} strokeWidth={1.5} />
+            <Pencil size={13} strokeWidth={1.5} />
           </button>
         </div>
       </div>
@@ -107,23 +93,22 @@ function EmptyState({ onNew, onToggle }: { onNew: () => void; onToggle: () => vo
         flexShrink: 0,
         background: color.bgElevated,
         borderBottom: `1px solid ${color.border}`,
-        paddingTop: 'env(safe-area-inset-top, 0px)',
       }}>
         <div style={{
           display: 'flex', alignItems: 'center',
-          height: 52, paddingLeft: spacing[2],
+          height: 36, paddingLeft: spacing[2],
         }}>
           <button
             onClick={onToggle}
             style={{
-              width: 44, height: 44,
+              width: 32, height: 32,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'none', border: 'none', color: color.accent,
+              background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)',
             }}
           >
-            <AlignLeft size={22} strokeWidth={2} />
+            <AlignLeft size={16} strokeWidth={2} />
           </button>
-          <span style={{ fontSize: font.size.md, fontWeight: font.weight.semibold, color: color.text, marginLeft: spacing[2] }}>
+          <span style={{ fontSize: font.size.sm, fontWeight: font.weight.medium, color: 'rgba(255,255,255,0.6)', marginLeft: spacing[2] }}>
             StreamsAI
           </span>
         </div>

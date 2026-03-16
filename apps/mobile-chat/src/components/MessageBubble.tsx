@@ -143,11 +143,15 @@ function AssistantContent({ content, isStreaming, isLast }: {
 // ─── Code block ───────────────────────────────────────────────────────────────
 
 
+const PREVIEW_LINES = 4
+
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = useState(false)
-  const previewable = extractPreviewCandidate('```' + language + '
-' + code + '
-```')
+  const [expanded, setExpanded] = useState(false)
+  const previewable = extractPreviewCandidate('```' + language + '\n' + code + '\n```')
+  const lines = code.split('\n')
+  const isLong = lines.length > PREVIEW_LINES
+  const displayCode = expanded || !isLong ? code : lines.slice(0, PREVIEW_LINES).join('\n')
 
   const copy = useCallback(async () => {
     await navigator.clipboard.writeText(code)
@@ -162,48 +166,76 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 
   return (
     <div style={{
-      margin: `${spacing[3]} 0`,
+      margin: `${spacing[2]} 0`,
       borderRadius: radius.md,
       overflow: 'hidden',
-      border: `1px solid rgba(255,255,255,0.08)`,
+      border: `1px solid rgba(255,255,255,0.07)`,
       background: color.codeBg,
     }}>
+      {/* Compact bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: `${spacing[2]} ${spacing[3]}`,
+        padding: `5px ${spacing[3]}`,
         background: color.codeBar,
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
       }}>
-        <span style={{ fontSize: font.size.xs, color: color.textSub, fontFamily: font.mono }}>
-          {language}
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', fontFamily: font.mono }}>
+          {language || 'code'}
         </span>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {previewable && (
-            <button onClick={openPreview} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: color.accent, fontSize: font.size.xs, cursor: 'pointer', padding: '4px 8px', borderRadius: radius.xs }}>
-              <Play size={12} /> Preview
+            <button onClick={openPreview} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.18)', color: color.accent, fontSize: 11, cursor: 'pointer', padding: '2px 7px', borderRadius: radius.full }}>
+              <Play size={10} /> Preview
             </button>
           )}
           <button
             onClick={copy}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: copied ? color.success : color.textSub, fontSize: font.size.xs, cursor: 'pointer', padding: '4px 8px', borderRadius: radius.xs }}
+            style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: copied ? color.success : 'rgba(255,255,255,0.3)', fontSize: 11, cursor: 'pointer', padding: '2px 6px', borderRadius: radius.xs }}
           >
-            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? <Check size={10} /> : <Copy size={10} />}
             {copied ? 'Copied' : 'Copy'}
           </button>
         </div>
       </div>
-      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const }}>
-        <SyntaxHighlighter
-          style={oneDark}
-          language={language}
-          PreTag="div"
-          customStyle={{ margin: 0, borderRadius: 0, fontSize: '14px', lineHeight: '1.65', padding: spacing[4], background: color.codeBg, minWidth: '100%' }}
-          codeTagProps={{ style: { fontFamily: font.mono } }}
-          wrapLongLines
-        >
-          {code}
-        </SyntaxHighlighter>
+
+      {/* Code body with fade when collapsed */}
+      <div style={{ position: 'relative' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const }}>
+          <SyntaxHighlighter
+            style={oneDark}
+            language={language}
+            PreTag="div"
+            customStyle={{ margin: 0, borderRadius: 0, fontSize: '12px', lineHeight: '1.55', padding: `${spacing[3]} ${spacing[4]}`, background: color.codeBg, minWidth: '100%' }}
+            codeTagProps={{ style: { fontFamily: font.mono } }}
+            wrapLongLines
+          >
+            {displayCode}
+          </SyntaxHighlighter>
+        </div>
+        {/* Fade overlay */}
+        {isLong && !expanded && (
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
+            background: `linear-gradient(transparent, ${color.codeBg})`,
+            pointerEvents: 'none',
+          }} />
+        )}
       </div>
+
+      {/* Expand toggle */}
+      {isLong && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          style={{
+            width: '100%', padding: '5px 0',
+            background: 'rgba(255,255,255,0.02)',
+            border: 'none', borderTop: '1px solid rgba(255,255,255,0.05)',
+            color: 'rgba(255,255,255,0.3)', fontSize: 11, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+          }}
+        >
+          {expanded ? '▲ Collapse' : `▼ ${lines.length} lines — expand`}
+        </button>
+      )}
     </div>
   )
 }
