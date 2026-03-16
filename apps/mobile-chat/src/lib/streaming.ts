@@ -33,7 +33,7 @@ async function _stream(
       headers: { 'Content-Type': 'application/json' },
       signal,
       body: JSON.stringify({
-        messages: messages.filter(m => m.role !== 'system'),
+        messages: messages.filter(m => m.role !== 'system' && m.content.trim().length > 0),
         model,
         threadId,
         maxTokens: 4096,

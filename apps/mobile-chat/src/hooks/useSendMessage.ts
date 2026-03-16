@@ -36,10 +36,10 @@ export function useSendMessage() {
       attachments: [],
     })
 
-    // 3. Build context — only completed messages
+    // 3. Build context — only completed messages with non-empty content
     const history = (messages[activeThreadId] ?? [])
-      .filter((m: import("@/types").Message) => m.status === 'done' && m.id !== placeholder.id)
-      .map((m: import("@/types").Message) => ({ role: m.role, content: m.content }))
+      .filter((m: import("@/types").Message) => m.status === 'done' && m.id !== placeholder.id && m.content.trim().length > 0)
+      .map((m: import("@/types").Message) => ({ role: m.role, content: m.content.trim() }))
 
     // 4. Determine model
     const thread = threads.find(t => t.id === activeThreadId)
