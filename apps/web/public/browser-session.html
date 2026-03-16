@@ -1,65 +1,53 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Browser Session</title>
-    <style>
-      html, body, iframe {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        border: 0;
-        background: #07080b;
-      }
-      body { overflow: hidden; }
-    </style>
-  </head>
-  <body>
-    <iframe id="frame" sandbox="allow-scripts allow-forms allow-popups allow-same-origin"></iframe>
+<script>
+  const frame = document.getElementById("frame");
+  let currentUrl = "https://duckduckgo.com/";
 
-    <script>
-      const frame = document.getElementById("frame");
-      let currentUrl = "about:blank";
+  function post(type, extra = {}) {
+    parent.postMessage({ type, ...extra }, "*");
+  }
 
-      function post(type, extra = {}) {
-        parent.postMessage({ type, ...extra }, "*");
-      }
+  function navigate(url) {
+    if (!url) return;
+    currentUrl = url;
+    post("browser:loading");
+    frame.src = url;
+    post("browser:url-changed", { url });
+  }
 
-      function navigate(url) {
+  window.addEventListener("message", (e) => {
+    const data = e.data || {};
+
+    if (data.type === "browser:navigate" && data.url) {
+      navigate(data.url);
+    }
+
+    if (data.type === "browser:reload") {
+      frame.src = currentUrl || "https://duckduckgo.com/";
+    }
+
+    if (data.type === "browser:back") {
+      try { frame.contentWindow.history.back(); } catch {}
+    }
+
+    if (data.type === "browser:forward") {
+      try { frame.contentWindow.history.forward(); } catch {}
+    }
+  });
+
+  frame.addEventListener("load", () => {
+    post("browser:connected");
+    try {
+      const url = frame.contentWindow.location.href;
+      if (url && url !== "about:blank") {
         currentUrl = url;
-        post("browser:loading");
-        frame.src = url;
         post("browser:url-changed", { url });
+      } else {
+        post("browser:url-changed", { url: currentUrl });
       }
+    } catch {
+      post("browser:url-changed", { url: currentUrl });
+    }
+  });
 
-      window.addEventListener("message", (e) => {
-        const data = e.data || {};
-        if (data.type === "browser:navigate" && data.url) navigate(data.url);
-        if (data.type === "browser:reload") frame.src = currentUrl || "about:blank";
-        if (data.type === "browser:back") {
-          try { frame.contentWindow.history.back(); } catch {}
-        }
-        if (data.type === "browser:forward") {
-          try { frame.contentWindow.history.forward(); } catch {}
-        }
-      });
-
-      frame.addEventListener("load", () => {
-        post("browser:connected");
-        try {
-          const url = frame.contentWindow.location.href;
-          if (url && url !== "about:blank") {
-            currentUrl = url;
-            post("browser:url-changed", { url });
-          }
-        } catch {
-          post("browser:url-changed", { url: currentUrl });
-        }
-      });
-
-      post("browser:connected");
-    </script>
-  </body>
-</html>
+  navigate(currentUrl);
+</script>
