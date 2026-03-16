@@ -303,9 +303,10 @@ const [previewUrl, setPreviewUrl] = useState(() => {
 
 // ── PanelShell ─────────────────────────────────────────────────────────────────
 
-function PanelShell({ children, title, onCollapse, isCollapsed: _ic, toolbar }: {
-  children: React.ReactNode; title: React.ReactNode;
-  onCollapse?: () => void; isCollapsed: boolean;
+function PanelShell({ children, title, onCollapse, toolbar }: {
+  children: React.ReactNode;
+  title: React.ReactNode;
+  onCollapse?: () => void;
   toolbar?: React.ReactNode;
 }) {
   return (
