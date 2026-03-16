@@ -12,6 +12,20 @@ export default function App() {
     loadSettings().then(() => loadThreads())
   }, [loadSettings, loadThreads])
 
+  // Listen for Studio commands via postMessage
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (!e.data || typeof e.data !== 'object') return
+      if (e.data.type === 'streamsai:new-chat') {
+        useChatStore.getState().createThread().then(id => {
+          useChatStore.getState().selectThread(id)
+        })
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
   useEffect(() => {
     if (!activeThreadId && threads.length > 0) {
       selectThread(threads[0].id)

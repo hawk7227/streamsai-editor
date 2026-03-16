@@ -37,6 +37,12 @@ export default function StudioPage() {
   const [safeZone, setSafeZone] = useState(() => boolPref('studio:safeZone', false))
   const [staged, setStaged] = useState<StagedChange[]>(() => loadStagedChanges())
   const dragState = useRef<{ handle: 'left-right' | 'center-right'; startX: number; startLeft: number; startCenter: number } | null>(null)
+  const chatIframeRef = useRef<HTMLIFrameElement>(null)
+
+  const handleNewChat = useCallback(() => {
+    chatIframeRef.current?.contentWindow?.postMessage({ type: 'streamsai:new-chat' }, '*')
+    setActiveTool(null)
+  }, [])
 
   useEffect(() => save('studio:leftW', leftW), [leftW])
   useEffect(() => save('studio:centerW', centerW), [centerW])
@@ -164,13 +170,14 @@ export default function StudioPage() {
         currentFile={project.currentFile}
         onSelectFile={(path) => void openFile(path)}
         onUpload={onUpload}
+        onNewChat={handleNewChat}
       />
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
         <CompactContextBar project={project} previewMode={preview.mode === 'route' ? preview.route : preview.mode} deviceLabel={device === 'iphone' ? 'iPhone 14 Pro Max' : 'Desktop'} />
         <div style={{ display: 'flex', minHeight: 0, flex: 1 }}>
           <div style={{ width: actualLeft, minWidth: 0, overflow: 'hidden', transition: isDragging ? 'none' : 'width 160ms ease' }}>
             <PanelShell title="Chat" onCollapse={() => setLeftOpen(false)}>
-              <iframe src={MOBILE_CHAT_URL} title="StreamsAI Chat" allow="clipboard-write; clipboard-read" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
+              <iframe ref={chatIframeRef} src={MOBILE_CHAT_URL} title="StreamsAI Chat" allow="clipboard-write; clipboard-read" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
             </PanelShell>
           </div>
           <ResizeHandle onPointerDown={(e) => startDrag(e, 'left-right', leftW, centerW, dragState, setIsDragging)} active={isDragging} />
