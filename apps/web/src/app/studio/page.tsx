@@ -6,7 +6,10 @@ import QualityGatePanel from "@/components/QualityGatePanel";
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const MOBILE_CHAT_URL =
-  process.env.NEXT_PUBLIC_MOBILE_CHAT_URL ?? "http://localhost:3001";
+  (process.env.NEXT_PUBLIC_MOBILE_CHAT_URL || "").replace(/\/$/, "") ||
+  (typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:3001"
+    : "https://streamsai-editor-mobile-chat.vercel.app");
 
 const MIN_PANEL_WIDTH = 0;
 const HANDLE_HIT      = 8; // wider hit target
@@ -43,12 +46,23 @@ export default function StudioPage() {
   useEffect(() => { localStorage.setItem("studio:leftOpen",   String(leftOpen));   }, [leftOpen]);
   useEffect(() => { localStorage.setItem("studio:centerOpen", String(centerOpen)); }, [centerOpen]);
   useEffect(() => { localStorage.setItem("studio:rightView", rightView); }, [rightView]);
-
+  useEffect(() => { localStorage.setItem("studio:centerMode", centerMode); }, [centerMode]);
+  useEffect(() => { localStorage.setItem("studio:previewUrl", previewUrl); }, [previewUrl]);
   // Browser panel state
   const [inputUrl,       setInputUrl]       = useState("");
   const [browserLoading, setBrowserLoading] = useState(true);
   const browserRef = useRef<HTMLIFrameElement>(null);
 
+const [centerMode, setCenterMode] = useState<"browser" | "preview">(() => {
+  if (typeof window === "undefined") return "browser";
+  const saved = localStorage.getItem("studio:centerMode");
+  return saved === "preview" ? "preview" : "browser";
+});
+
+const [previewUrl, setPreviewUrl] = useState(() => {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("studio:previewUrl") ?? "";
+});
   // ── postMessage bridge ───────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -178,38 +192,72 @@ export default function StudioPage() {
 
       <ResizeHandle onPointerDown={startDrag("left-right")} active={isDragging} />
 
-      {/* ── CENTER — Browser ─────────────────────────────────────────────────── */}
-      <div style={{
-        width: actualCenter, flexShrink: 0, overflow: "hidden",
-        transition: isDragging ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)",
-        borderLeft:  "1px solid rgba(255,255,255,0.06)",
-        borderRight: "1px solid rgba(255,255,255,0.06)",
-      }}>
-        <PanelShell
-          title="Browser"
-          onCollapse={() => setCenterOpen(false)}
-          isCollapsed={false}
-          toolbar={
-            <BrowserBar
-              value={inputUrl}
-              onChange={setInputUrl}
-              onNavigate={navigate}
-              onBack={    () => postToBrowser({ type: "browser:back"    })}
-              onForward={ () => postToBrowser({ type: "browser:forward" })}
-              onRefresh={ () => postToBrowser({ type: "browser:reload"  })}
-              loading={browserLoading}
-            />
-          }
-        >
-          <iframe
-            ref={browserRef}
-            src="/browser-session.html"
-            style={{ width: "100%", height: "100%", border: "none", display: "block" }}
-            allow="clipboard-write; clipboard-read; fullscreen"
-            title="Browser"
-          />
-        </PanelShell>
+      {/* ── CENTER — Browser / Preview ───────────────────────────────────────── */}
+<div style={{
+  width: actualCenter, flexShrink: 0, overflow: "hidden",
+  transition: isDragging ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)",
+  borderLeft:  "1px solid rgba(255,255,255,0.06)",
+  borderRight: "1px solid rgba(255,255,255,0.06)",
+}}>
+  <PanelShell
+    title={
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <TabChip label="Browser" active={centerMode === "browser"} onClick={() => setCenterMode("browser")} />
+        <TabChip label="Preview" active={centerMode === "preview"} onClick={() => setCenterMode("preview")} />
       </div>
+    }
+    onCollapse={() => setCenterOpen(false)}
+    isCollapsed={false}
+    toolbar={
+      centerMode === "browser" ? (
+        <BrowserBar
+          value={inputUrl}
+          onChange={setInputUrl}
+          onNavigate={navigate}
+          onBack={() => postToBrowser({ type: "browser:back" })}
+          onForward={() => postToBrowser({ type: "browser:forward" })}
+          onRefresh={() => postToBrowser({ type: "browser:reload" })}
+          loading={browserLoading}
+        />
+      ) : (
+        <PreviewBar
+          value={previewUrl}
+          onChange={setPreviewUrl}
+          onOpen={() => setPreviewUrl(normalize(previewUrl))}
+          onClear={() => setPreviewUrl("")}
+        />
+      )
+    }
+  >
+    {centerMode === "browser" ? (
+      <iframe
+        ref={browserRef}
+        src="/browser-session.html"
+        style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+        allow="clipboard-write; clipboard-read; fullscreen"
+        title="Browser"
+      />
+    ) : previewUrl ? (
+      <iframe
+        src={previewUrl}
+        style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+        allow="clipboard-write; clipboard-read; fullscreen"
+        title="Preview"
+      />
+    ) : (
+      <div style={{
+        height: "100%",
+        display: "grid",
+        placeItems: "center",
+        color: "rgba(255,255,255,0.55)",
+        fontSize: 14,
+        background: "#07080b"
+      }}>
+        No preview URL yet
+      </div>
+    )}
+  </PanelShell>
+</div>
 
       <ResizeHandle onPointerDown={startDrag("center-right")} active={isDragging} />
 
@@ -312,7 +360,42 @@ function BrowserBar({ value, onChange, onNavigate, onBack, onForward, onRefresh,
     </div>
   );
 }
-
+function PreviewBar({
+  value,
+  onChange,
+  onOpen,
+  onClear,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onOpen: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+      <input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter") onOpen(); }}
+        placeholder="Enter preview URL…"
+        style={{
+          flex: 1,
+          minWidth: 0,
+          padding: "3px 8px",
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 6,
+          color: "#e5e7eb",
+          fontSize: 11,
+          outline: "none",
+          fontFamily: "monospace",
+        }}
+      />
+      <NavBtn onClick={onOpen} label="Open" />
+      <NavBtn onClick={onClear} label="Clear" />
+    </div>
+  );
+}
 function NavBtn({ onClick, label, disabled = false }: {
   onClick: () => void; label: string; disabled?: boolean;
 }) {
