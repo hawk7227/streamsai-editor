@@ -33,7 +33,7 @@
     <script>
       window.addEventListener("DOMContentLoaded", function () {
         const frame = document.getElementById("frame");
-        let currentUrl = "https://duckduckgo.com/";
+        let currentUrl = "https://example.com/";
 
         function post(type, extra) {
           parent.postMessage({ type, ...(extra || {}) }, "*");
