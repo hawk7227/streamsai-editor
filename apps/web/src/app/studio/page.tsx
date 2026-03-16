@@ -71,7 +71,15 @@ const [previewUrl, setPreviewUrl] = useState(() => {
       if (!e.data || typeof e.data !== "object") return;
       switch (e.data.type) {
         case "browser:url-changed": setInputUrl(e.data.url ?? "");  break;
-        case "browser:connected":   setBrowserLoading(false);        break;
+        case "browser:connected":
+           setBrowserLoading(false);
+          if (browserRef.current?.contentWindow) {
+          browserRef.current.contentWindow.postMessage(
+      { type: "browser:navigate", url: inputUrl || "https://duckduckgo.com/" },
+      "*"
+    );
+  }
+  break;
         case "browser:loading":     setBrowserLoading(true);         break;
       }
     };
