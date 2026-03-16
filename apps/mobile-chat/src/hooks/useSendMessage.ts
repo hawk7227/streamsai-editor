@@ -1,9 +1,10 @@
 import { useRef, useCallback } from 'react'
 import { useChatStore } from '@/store/chat'
 import { streamCompletion, generateThreadTitle } from '@/lib/streaming'
+import { postPreviewCandidate } from '@/lib/preview'
 import type { Attachment, Message } from '@/types'
 
-// Studio system prompt — injected at API call time, never persisted to DB
+// ── Studio system prompt — injected at API call time, never persisted ──────────
 const STUDIO_SYSTEM_USER = `You are StreamsAI Studio Assistant — an AI builder running inside StreamsAI Studio.
 
 You have a live Preview Panel to your right. When you generate HTML it renders there automatically.
@@ -49,6 +50,7 @@ export function useSendMessage() {
       attachments: [],
     })
 
+    // Filter empty content to prevent Zod min(1) validation errors
     const history = (messages[activeThreadId] ?? [])
       .filter((m: Message) => m.status === 'done' && m.id !== placeholder.id && m.content.trim().length > 0)
       .map((m: Message) => ({ role: m.role, content: m.content.trim() }))
@@ -73,26 +75,13 @@ export function useSendMessage() {
       {
         onToken: (token) => {
           accumulated += token
-          updateMessage(placeholder.id, activeThreadId, {
-            content: accumulated,
-            status: 'streaming',
-          })
+          updateMessage(placeholder.id, activeThreadId, { content: accumulated, status: 'streaming' })
         },
         onDone: (full, tokens) => {
-          updateMessage(placeholder.id, activeThreadId, {
-            content: full,
-            status: 'done',
-            tokens,
-          })
+          updateMessage(placeholder.id, activeThreadId, { content: full, status: 'done', tokens })
 
-          const htmlMatch = full.match(/```html\s*\n([\s\S]*?)```/) ||
-                            full.match(/(<!DOCTYPE html>[\s\S]*?<\/html>)/i)
-          if (htmlMatch) {
-            window.parent?.postMessage(
-              { type: 'preview:html', html: htmlMatch[1].trim(), title: 'Chat HTML Preview' },
-              '*'
-            )
-          }
+          // Auto-post preview candidate to Studio parent
+          postPreviewCandidate(full)
 
           if (isFirstExchange && thread?.title === 'New conversation') {
             generateThreadTitle(content.trim(), full, model).then(title => {
@@ -118,9 +107,7 @@ export function useSendMessage() {
     if (!activeThreadId) return
     const msgs = messages[activeThreadId] ?? []
     const streaming = [...msgs].reverse().find((m: Message) => m.status === 'streaming')
-    if (streaming) {
-      updateMessage(streaming.id, activeThreadId, { status: 'done' })
-    }
+    if (streaming) updateMessage(streaming.id, activeThreadId, { status: 'done' })
   }, [])
 
   return { send, cancel }

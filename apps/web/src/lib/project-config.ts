@@ -1,48 +1,33 @@
-export type ToolSection = 'projects' | 'files' | 'uploads' | 'artifacts' | 'apps' | 'settings'
-
-export interface ProjectConfig {
-  projectName: string
-  repoOwner: string
-  repoName: string
+export type ActiveProject = {
+  id: string
+  name: string
+  owner: string
+  repo: string
   branch: string
   currentFile: string
   previewTarget: string
-  mobileChatUrl: string
-  githubConnected: boolean
-  supabaseConnected: boolean
-  vercelConnected: boolean
 }
 
-export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
-  projectName: 'streamsai-editor',
-  repoOwner: 'hawk7227',
-  repoName: 'streamsai-editor',
+export const DEFAULT_PROJECT: ActiveProject = {
+  id: 'streamsai-editor',
+  name: 'streamsai-editor',
+  owner: 'hawk7227',
+  repo: 'streamsai-editor',
   branch: 'main',
   currentFile: 'apps/web/src/app/studio/page.tsx',
   previewTarget: '/preview',
-  mobileChatUrl: 'https://streamsai-editor-mobile-chat.vercel.app',
-  githubConnected: false,
-  supabaseConnected: false,
-  vercelConnected: false,
 }
 
-export const PROJECT_CONFIG_KEY = 'streamsai:project-config'
-
-export function readProjectConfig(): ProjectConfig {
-  if (typeof window === 'undefined') return DEFAULT_PROJECT_CONFIG
+const KEY = 'streamsai:active-project'
+export function loadActiveProject(): ActiveProject {
+  if (typeof window === 'undefined') return DEFAULT_PROJECT
   try {
-    const raw = window.localStorage.getItem(PROJECT_CONFIG_KEY)
-    if (!raw) return DEFAULT_PROJECT_CONFIG
-    return { ...DEFAULT_PROJECT_CONFIG, ...JSON.parse(raw) }
+    const raw = window.localStorage.getItem(KEY)
+    return raw ? { ...DEFAULT_PROJECT, ...JSON.parse(raw) } : DEFAULT_PROJECT
   } catch {
-    return DEFAULT_PROJECT_CONFIG
+    return DEFAULT_PROJECT
   }
 }
-
-export function writeProjectConfig(next: Partial<ProjectConfig>): ProjectConfig {
-  const value = { ...readProjectConfig(), ...next }
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem(PROJECT_CONFIG_KEY, JSON.stringify(value))
-  }
-  return value
+export function saveActiveProject(project: ActiveProject) {
+  if (typeof window !== 'undefined') window.localStorage.setItem(KEY, JSON.stringify(project))
 }

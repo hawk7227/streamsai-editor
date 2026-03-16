@@ -1,131 +1,32 @@
-"use client";
+"use client"
+import { useMemo, useState } from 'react'
 
-import { useMemo, useState } from "react";
-import type { ToolSection } from "@/lib/project-config";
+type ToolKey = 'projects' | 'files' | 'uploads' | 'artifacts' | 'settings'
 
-interface ToolRailProps {
-  activeSection: ToolSection;
-  onSectionChange: (section: ToolSection) => void;
-  projectName: string;
-  currentFile: string;
+type Props = { expanded: boolean; onToggle(): void; activeTool: ToolKey | null; onTool(tool: ToolKey): void; files: string[]; currentFile: string; onSelectFile(path: string): void; onUpload(file: File): void }
+const tools: Array<{ key: ToolKey; icon: string; label: string }> = [
+  { key: 'projects', icon: '📁', label: 'Projects' },
+  { key: 'files', icon: '📄', label: 'Files' },
+  { key: 'uploads', icon: '⬆', label: 'Uploads' },
+  { key: 'artifacts', icon: '🧩', label: 'Artifacts' },
+  { key: 'settings', icon: '⚙', label: 'Settings' },
+]
+export function ToolRail(props: Props) {
+  const { expanded, onToggle, activeTool, onTool, files, currentFile, onSelectFile, onUpload } = props
+  const [search, setSearch] = useState('')
+  const filteredFiles = useMemo(() => files.filter((file) => file.toLowerCase().includes(search.toLowerCase())).slice(0, 200), [files, search])
+  return <div style={{ width: expanded ? 250 : 58, borderRight: '1px solid rgba(255,255,255,0.08)', background: '#050814', display: 'flex', flexDirection: 'column', transition: 'width 160ms ease', overflow: 'hidden', flexShrink: 0 }}>
+    <button onClick={onToggle} style={railButtonStyle(true)}>{expanded ? '◀' : '▶'}</button>
+    {tools.map((tool) => <button key={tool.key} onClick={() => onTool(tool.key)} style={railButtonStyle(activeTool === tool.key)}><span>{tool.icon}</span>{expanded && <span style={{ marginLeft: 10 }}>{tool.label}</span>}</button>)}
+    {expanded && activeTool === 'files' && <div style={panelStyle}><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search files" style={inputStyle} /><div style={{ overflow: 'auto', flex: 1 }}>{filteredFiles.map((file) => <button key={file} onClick={() => onSelectFile(file)} style={{ ...fileButtonStyle, background: file === currentFile ? 'rgba(68,195,166,0.18)' : 'transparent' }}>{file}</button>)}</div></div>}
+    {expanded && activeTool === 'uploads' && <div style={panelStyle}><label style={{ ...fileButtonStyle, border: '1px dashed rgba(255,255,255,0.18)' }}>Upload file<input type="file" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files?.[0]; if (file) onUpload(file) }} /></label><div style={{ color: 'rgba(255,255,255,0.62)', fontSize: 12, lineHeight: 1.5 }}>Code, docs, images, and HTML files can be previewed here.</div></div>}
+    {expanded && activeTool === 'projects' && <div style={panelStyle}><div style={{ color: '#d7e3ff', fontSize: 13 }}>Active project is locked in the compact header.</div></div>}
+    {expanded && activeTool === 'artifacts' && <div style={panelStyle}><div style={{ color: '#d7e3ff', fontSize: 13 }}>Artifacts surface is ready for staged previews and exports.</div></div>}
+    {expanded && activeTool === 'settings' && <div style={panelStyle}><div style={{ color: '#d7e3ff', fontSize: 13 }}>Use /setup for GitHub, Supabase, and Vercel setup.</div></div>}
+    <div style={{ marginTop: 'auto', padding: 12, color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>StreamsAI</div>
+  </div>
 }
-
-const ITEMS: Array<{ key: ToolSection; icon: string; label: string }> = [
-  { key: "projects", icon: "📁", label: "Projects" },
-  { key: "files", icon: "📄", label: "Files" },
-  { key: "uploads", icon: "⬆", label: "Uploads" },
-  { key: "artifacts", icon: "📦", label: "Artifacts" },
-  { key: "apps", icon: "⚙", label: "Apps" },
-  { key: "settings", icon: "🛠", label: "Settings" },
-];
-
-export function ToolRail({ activeSection, onSectionChange, projectName, currentFile }: ToolRailProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  const panel = useMemo(() => {
-    switch (activeSection) {
-      case "projects":
-        return (
-          <>
-            <RailLine label="Active Project" value={projectName} />
-            <RailLine label="Repo" value="hawk7227/streamsai-editor" />
-            <RailLine label="Branch" value="main" />
-          </>
-        );
-      case "files":
-        return (
-          <>
-            <RailLine label="Current File" value={currentFile} />
-            <RailHint>Only the current discussion file is kept visible in the workspace.</RailHint>
-          </>
-        );
-      case "uploads":
-        return <RailHint>Use /setup first, then upload documents, images, archives, and frontend files into the active project context.</RailHint>;
-      case "artifacts":
-        return <RailHint>Preview bundles, staged diffs, and shareable artifacts appear here once generated.</RailHint>;
-      case "apps":
-        return <RailHint>GitHub, Supabase, and Vercel connections are managed in Setup.</RailHint>;
-      case "settings":
-        return <RailHint>Project lock, preview modes, and compact workspace behavior are controlled here.</RailHint>;
-      default:
-        return null;
-    }
-  }, [activeSection, currentFile, projectName]);
-
-  return (
-    <div style={{
-      width: expanded ? 220 : 52,
-      transition: "width 180ms ease",
-      borderRight: "1px solid rgba(255,255,255,0.08)",
-      background: "#080a0f",
-      display: "flex",
-      flexDirection: "column",
-      overflow: "hidden",
-      flexShrink: 0,
-    }}>
-      <button
-        onClick={() => setExpanded(v => !v)}
-        style={{
-          height: 28,
-          border: "none",
-          background: "transparent",
-          color: "rgba(255,255,255,0.65)",
-          cursor: "pointer",
-          fontSize: 12,
-        }}
-        title={expanded ? "Collapse tools" : "Expand tools"}
-      >
-        {expanded ? "◀" : "▶"}
-      </button>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: expanded ? 8 : 6 }}>
-        {ITEMS.map(item => {
-          const active = item.key === activeSection;
-          return (
-            <button
-              key={item.key}
-              onClick={() => onSectionChange(item.key)}
-              title={item.label}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                width: "100%",
-                border: active ? "1px solid rgba(111,236,208,0.24)" : "1px solid rgba(255,255,255,0.06)",
-                background: active ? "rgba(88,220,197,0.12)" : "rgba(255,255,255,0.02)",
-                color: active ? "#defcf3" : "rgba(255,255,255,0.72)",
-                borderRadius: 10,
-                padding: expanded ? "8px 10px" : "8px 0",
-                justifyContent: expanded ? "flex-start" : "center",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              <span>{item.icon}</span>
-              {expanded ? <span>{item.label}</span> : null}
-            </button>
-          );
-        })}
-      </div>
-
-      {expanded ? (
-        <div style={{ padding: 10, borderTop: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.72)", fontSize: 11, overflowY: "auto" }}>
-          {panel}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function RailLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(255,255,255,0.42)", marginBottom: 4 }}>{label}</div>
-      <div style={{ wordBreak: "break-word" }}>{value}</div>
-    </div>
-  )
-}
-
-function RailHint({ children }: { children: React.ReactNode }) {
-  return <div style={{ lineHeight: 1.5, color: "rgba(255,255,255,0.66)" }}>{children}</div>
-}
+const panelStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 10, padding: 10, borderTop: '1px solid rgba(255,255,255,0.06)', minHeight: 0, flex: 1 }
+const inputStyle: React.CSSProperties = { width: '100%', padding: '9px 10px', borderRadius: 10, background: 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.08)' }
+const fileButtonStyle: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 10, color: '#d7e3ff', background: 'transparent', border: 'none', fontSize: 12, wordBreak: 'break-all' }
+function railButtonStyle(active: boolean): React.CSSProperties { return { display: 'flex', alignItems: 'center', gap: 4, padding: '14px 12px', background: active ? 'rgba(68,195,166,0.12)' : 'transparent', border: 'none', color: '#e8f0ff', fontSize: 13, cursor: 'pointer' } }

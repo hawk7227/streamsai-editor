@@ -1,213 +1,243 @@
-"use client";
+"use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import QualityGatePanel from "@/components/QualityGatePanel";
-import { ToolRail } from "@/components/tool-rail/ToolRail";
-import { CompactContextBar } from "@/components/preview/CompactContextBar";
-import { PreviewSurface } from "@/components/preview/PreviewSurface";
-import { DEFAULT_PROJECT_CONFIG, readProjectConfig, ToolSection } from "@/lib/project-config";
-import {
-  PreviewState,
-  DEFAULT_PREVIEW_STATE,
-  isPreviewBridgeEvent,
-} from "@/lib/preview-state";
+import { useCallback, useEffect, useRef, useState } from 'react'
+import QualityGatePanel from '@/components/QualityGatePanel'
+import { ToolRail } from '@/components/tool-rail/ToolRail'
+import { CompactContextBar } from '@/components/preview/CompactContextBar'
+import { PreviewSurface, type PreviewPayload } from '@/components/preview/PreviewSurface'
+import { DEFAULT_PROJECT, loadActiveProject, saveActiveProject, type ActiveProject } from '@/lib/project-config'
+import { clearStagedChange, loadStagedChanges, stageChange, type StagedChange } from '@/lib/staging'
 
-const MIN_PANEL_WIDTH = 0;
-const HANDLE_HIT = 8;
+const MOBILE_CHAT_URL =
+  (process.env.NEXT_PUBLIC_MOBILE_CHAT_URL || '').replace(/\/$/, '') ||
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? 'http://localhost:3001'
+    : 'https://streamsai-editor-mobile-chat.vercel.app')
+
+const HANDLE_HIT = 8
+
+type DeviceKey = 'desktop' | 'iphone'
+type RightView = 'editor' | 'quality'
+type ToolKey = 'projects' | 'files' | 'uploads' | 'artifacts' | 'settings'
 
 export default function StudioPage() {
-  const [projectConfig, setProjectConfig] = useState(DEFAULT_PROJECT_CONFIG);
-  const [leftW, setLeftW] = useState(() => {
-    if (typeof window === "undefined") return 300;
-    return Number(localStorage.getItem("studio:leftW") ?? 300);
-  });
-  const [centerW, setCenterW] = useState(() => {
-    if (typeof window === "undefined") return 640;
-    return Number(localStorage.getItem("studio:centerW") ?? 640);
-  });
-  const [leftOpen, setLeftOpen] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("studio:leftOpen") !== "false";
-  });
-  const [centerOpen, setCenterOpen] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("studio:centerOpen") !== "false";
-  });
-  const [isDragging, setIsDragging] = useState(false);
-  const [rightView, setRightView] = useState<"editor" | "quality">(() => {
-    if (typeof window === "undefined") return "editor";
-    const saved = localStorage.getItem("studio:rightView");
-    return saved === "quality" ? "quality" : "editor";
-  });
-  const [toolSection, setToolSection] = useState<ToolSection>("projects");
-  const [previewUrl, setPreviewUrl] = useState("/preview");
+  const [leftW, setLeftW] = useState(() => numberPref('studio:leftW', 420))
+  const [centerW, setCenterW] = useState(() => numberPref('studio:centerW', 760))
+  const [leftOpen, setLeftOpen] = useState(() => boolPref('studio:leftOpen', true))
+  const [centerOpen, setCenterOpen] = useState(() => boolPref('studio:centerOpen', true))
+  const [isDragging, setIsDragging] = useState(false)
+  const [rightView, setRightView] = useState<RightView>(() => (typeof window === 'undefined' ? 'editor' : (window.localStorage.getItem('studio:rightView') as RightView) || 'editor'))
+  const [toolExpanded, setToolExpanded] = useState(() => boolPref('studio:toolExpanded', false))
+  const [activeTool, setActiveTool] = useState<ToolKey | null>(null)
+  const [project, setProject] = useState<ActiveProject>(() => loadActiveProject())
+  const [files, setFiles] = useState<string[]>([])
+  const [fileContent, setFileContent] = useState('')
+  const [preview, setPreview] = useState<PreviewPayload>({ mode: 'route', route: loadActiveProject().previewTarget || '/preview' })
+  const [device, setDevice] = useState<DeviceKey>(() => (typeof window === 'undefined' ? 'desktop' : ((window.localStorage.getItem('studio:device') as DeviceKey) || 'desktop')))
+  const [safeZone, setSafeZone] = useState(() => boolPref('studio:safeZone', false))
+  const [staged, setStaged] = useState<StagedChange[]>(() => loadStagedChanges())
+  const dragState = useRef<{ handle: 'left-right' | 'center-right'; startX: number; startLeft: number; startCenter: number } | null>(null)
 
-  // ── Preview state (shared between chat bridge and PreviewSurface) ──────────
-  const [previewState, setPreviewState] = useState<PreviewState>(DEFAULT_PREVIEW_STATE);
+  useEffect(() => save('studio:leftW', leftW), [leftW])
+  useEffect(() => save('studio:centerW', centerW), [centerW])
+  useEffect(() => save('studio:leftOpen', leftOpen), [leftOpen])
+  useEffect(() => save('studio:centerOpen', centerOpen), [centerOpen])
+  useEffect(() => save('studio:rightView', rightView), [rightView])
+  useEffect(() => save('studio:toolExpanded', toolExpanded), [toolExpanded])
+  useEffect(() => save('studio:device', device), [device])
+  useEffect(() => save('studio:safeZone', safeZone), [safeZone])
+  useEffect(() => saveActiveProject(project), [project])
+
+  const actualLeft = leftOpen ? leftW : 0
+  const actualCenter = centerOpen ? centerW : 0
+
+  const loadFiles = useCallback(async () => {
+    const res = await fetch(`/api/projects/files?owner=${encodeURIComponent(project.owner)}&repo=${encodeURIComponent(project.repo)}&branch=${encodeURIComponent(project.branch)}`)
+    const json = await res.json()
+    if (json.files) setFiles(json.files)
+  }, [project])
+
+  const openFile = useCallback(async (path: string) => {
+    const res = await fetch(`/api/projects/file?owner=${encodeURIComponent(project.owner)}&repo=${encodeURIComponent(project.repo)}&branch=${encodeURIComponent(project.branch)}&path=${encodeURIComponent(path)}`)
+    const json = await res.json()
+    if (json.content) {
+      setProject((prev) => ({ ...prev, currentFile: path }))
+      setFileContent(json.content)
+    }
+  }, [project])
 
   useEffect(() => {
-    const config = readProjectConfig();
-    setProjectConfig(config);
-    setPreviewUrl(config.previewTarget || "/preview");
-  }, []);
-
-  useEffect(() => { localStorage.setItem("studio:leftW", String(leftW)); }, [leftW]);
-  useEffect(() => { localStorage.setItem("studio:centerW", String(centerW)); }, [centerW]);
-  useEffect(() => { localStorage.setItem("studio:leftOpen", String(leftOpen)); }, [leftOpen]);
-  useEffect(() => { localStorage.setItem("studio:centerOpen", String(centerOpen)); }, [centerOpen]);
-  useEffect(() => { localStorage.setItem("studio:rightView", rightView); }, [rightView]);
-
-  // ── Chat → Preview bridge ─────────────────────────────────────────────────
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (!isPreviewBridgeEvent(e.data)) return;
-      const ev = e.data;
-
-      if (ev.type === "preview:html" || ev.type === "preview:doc") {
-        setPreviewState({ mode: "html", html: ev.html, title: ev.title, updatedAt: Date.now() });
-        if (!centerOpen) setCenterOpen(true); // auto-open preview panel
-      } else if (ev.type === "preview:route") {
-        setPreviewState({ mode: "route", route: ev.route, title: ev.title, updatedAt: Date.now() });
-        setPreviewUrl(ev.route);
-        if (!centerOpen) setCenterOpen(true);
-      } else if (ev.type === "preview:component") {
-        setPreviewState({ mode: "component", code: ev.code, title: ev.title, updatedAt: Date.now() });
-        if (!centerOpen) setCenterOpen(true);
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [centerOpen]);
-
-  const dragState = useRef<{ handle: "left-right" | "center-right"; startX: number; startLeft: number; startCenter: number } | null>(null);
-
-  const startDrag = useCallback((handle: "left-right" | "center-right") => (e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragState.current = { handle, startX: e.clientX, startLeft: leftW, startCenter: centerW };
-    setIsDragging(true);
-  }, [leftW, centerW]);
+    void loadFiles()
+    void openFile(project.currentFile || DEFAULT_PROJECT.currentFile)
+  }, [])
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
-      if (!dragState.current) return;
-      const dx = e.clientX - dragState.current.startX;
-      if (dragState.current.handle === "left-right") {
-        setLeftW(Math.max(MIN_PANEL_WIDTH, dragState.current.startLeft + dx));
-      } else {
-        setCenterW(Math.max(MIN_PANEL_WIDTH, dragState.current.startCenter + dx));
-      }
-    };
+      if (!dragState.current) return
+      const dx = e.clientX - dragState.current.startX
+      if (dragState.current.handle === 'left-right') setLeftW(Math.max(300, dragState.current.startLeft + dx))
+      else setCenterW(Math.max(420, dragState.current.startCenter + dx))
+    }
     const onUp = () => {
-      if (!dragState.current) return;
-      dragState.current = null;
-      setIsDragging(false);
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
+      dragState.current = null
+      setIsDragging(false)
+    }
+    window.addEventListener('pointermove', onMove, { passive: true })
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
     return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
-  }, []);
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [])
 
-  const mobileChatUrl = useMemo(() => {
-    return (process.env.NEXT_PUBLIC_MOBILE_CHAT_URL || projectConfig.mobileChatUrl || "").replace(/\/$/, "") || (typeof window !== "undefined" && window.location.hostname === "localhost" ? "http://localhost:3001" : "https://streamsai-editor-mobile-chat.vercel.app");
-  }, [projectConfig.mobileChatUrl]);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data
+      if (!data || typeof data !== 'object') return
+      if (data.type === 'streamsai:preview-html' && typeof data.html === 'string') {
+        setPreview({ mode: 'html', html: data.html, title: data.title })
+      }
+      if (data.type === 'streamsai:preview-code' && typeof data.code === 'string') {
+        setPreview({ mode: 'code', code: data.code, language: data.language || 'tsx', title: data.title })
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
 
-  const actualLeft = leftOpen ? leftW : 0;
-  const actualCenter = centerOpen ? centerW : 0;
+  const stageCurrentPreview = useCallback(async () => {
+    if (preview.mode !== 'html' && preview.mode !== 'code') return
+    const nextContent = preview.mode === 'html' ? preview.html : preview.code
+    const language = preview.mode === 'html' ? 'html' : preview.language
+    const res = await fetch('/api/staging', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner: project.owner, repo: project.repo, branch: project.branch, path: project.currentFile, nextContent, language, source: 'chat-code' }),
+    })
+    const json = await res.json()
+    if (json.staged) {
+      stageChange(json.staged)
+      setStaged(loadStagedChanges())
+      setPreview({ mode: 'diff', staged: json.staged })
+    }
+  }, [preview, project])
+
+  const applyStage = useCallback(async () => {
+    if (preview.mode !== 'diff') return
+    const res = await fetch('/api/staging/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner: preview.staged.owner, repo: preview.staged.repo, branch: preview.staged.branch, path: preview.staged.path, content: preview.staged.nextContent, message: `Apply staged change to ${preview.staged.path}` }),
+    })
+    const json = await res.json()
+    if (json.ok) {
+      clearStagedChange(preview.staged.id)
+      setStaged(loadStagedChanges())
+      setFileContent(preview.staged.nextContent)
+      setPreview({ mode: 'route', route: project.previewTarget || '/preview' })
+    }
+  }, [preview, project.previewTarget])
+
+  const discardStage = useCallback(() => {
+    if (preview.mode !== 'diff') return
+    clearStagedChange(preview.staged.id)
+    setStaged(loadStagedChanges())
+    setPreview({ mode: 'route', route: project.previewTarget || '/preview' })
+  }, [preview, project.previewTarget])
+
+  const onUpload = useCallback(async (file: File) => {
+    const text = await file.text()
+    setPreview({ mode: 'doc', content: text, title: file.name })
+  }, [])
 
   return (
-    <div style={{ display: "flex", height: "100dvh", width: "100%", background: "#050607", overflow: "hidden", userSelect: isDragging ? "none" : "auto", cursor: isDragging ? "col-resize" : "auto" }}>
-      {isDragging ? <div style={{ position: "fixed", inset: 0, zIndex: 9999, cursor: "col-resize" }} /> : null}
-
-      <ToolRail activeSection={toolSection} onSectionChange={setToolSection} projectName={projectConfig.projectName} currentFile={projectConfig.currentFile} />
-
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <CompactContextBar
-          project={projectConfig.projectName}
-          branch={projectConfig.branch}
-          file={projectConfig.currentFile}
-          previewTarget={previewState.mode !== "idle" ? (previewState.title ?? previewState.mode) : previewUrl}
-          deviceMode="Desktop"
-          onOpenSetup={() => { if (typeof window !== "undefined") window.location.href = "/setup"; }}
-        />
-
-        <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-          <div style={{ width: actualLeft, flexShrink: 0, overflow: "hidden", transition: isDragging ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)" }}>
+    <div style={{ display: 'flex', height: '100dvh', width: '100%', background: '#02050b', overflow: 'hidden', userSelect: isDragging ? 'none' : 'auto', cursor: isDragging ? 'col-resize' : 'default' }}>
+      {isDragging && <div style={{ position: 'fixed', inset: 0, zIndex: 9999, cursor: 'col-resize' }} />}
+      <ToolRail
+        expanded={toolExpanded}
+        onToggle={() => setToolExpanded((v) => !v)}
+        activeTool={activeTool}
+        onTool={(tool) => setActiveTool((prev) => (prev === tool ? null : tool))}
+        files={files}
+        currentFile={project.currentFile}
+        onSelectFile={(path) => void openFile(path)}
+        onUpload={onUpload}
+      />
+      <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
+        <CompactContextBar project={project} previewMode={preview.mode === 'route' ? preview.route : preview.mode} deviceLabel={device === 'iphone' ? 'iPhone 14 Pro Max' : 'Desktop'} />
+        <div style={{ display: 'flex', minHeight: 0, flex: 1 }}>
+          <div style={{ width: actualLeft, minWidth: 0, overflow: 'hidden', transition: isDragging ? 'none' : 'width 160ms ease' }}>
             <PanelShell title="Chat" onCollapse={() => setLeftOpen(false)}>
-              <iframe src={mobileChatUrl} style={{ width: "100%", height: "100%", border: "none", display: "block" }} allow="clipboard-write; clipboard-read" title="StreamsAI Chat" />
+              <iframe src={MOBILE_CHAT_URL} title="StreamsAI Chat" allow="clipboard-write; clipboard-read" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
             </PanelShell>
           </div>
-
-          <ResizeHandle onPointerDown={startDrag("left-right")} active={isDragging} />
-
-          <div style={{ width: actualCenter, flexShrink: 0, overflow: "hidden", transition: isDragging ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)", borderLeft: "1px solid rgba(255,255,255,0.06)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
-            <PanelShell title="Preview" onCollapse={() => setCenterOpen(false)}>
+          <ResizeHandle onPointerDown={(e) => startDrag(e, 'left-right', leftW, centerW, dragState, setIsDragging)} active={isDragging} />
+          <div style={{ width: actualCenter, minWidth: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+            <PanelShell
+              title="Preview"
+              toolbar={<div style={{ display: 'flex', gap: 8 }}><MiniAction onClick={stageCurrentPreview}>Stage</MiniAction><MiniAction onClick={() => setSafeZone((v) => !v)}>{safeZone ? 'Safe Zone On' : 'Safe Zone Off'}</MiniAction></div>}
+              onCollapse={() => setCenterOpen(false)}
+            >
               <PreviewSurface
-                previewUrl={previewUrl}
-                onPreviewUrlChange={setPreviewUrl}
-                previewState={previewState}
-                onPreviewStateChange={setPreviewState}
+                preview={preview}
+                device={device}
+                safeZone={safeZone}
+                onDevice={setDevice}
+                onMode={(mode) => {
+                  if (mode === 'diff' && staged[0]) setPreview({ mode: 'diff', staged: staged[0] })
+                  else if (mode === 'doc') setPreview({ mode: 'doc', content: fileContent || 'No document loaded', title: project.currentFile })
+                  else if (mode === 'idle') setPreview({ mode: 'idle' })
+                }}
+                onRouteOpen={(route) => {
+                  setProject((prev) => ({ ...prev, previewTarget: route }))
+                  setPreview({ mode: 'route', route })
+                }}
+                onApply={applyStage}
+                onDiscard={discardStage}
               />
             </PanelShell>
           </div>
-
-          <ResizeHandle onPointerDown={startDrag("center-right")} active={isDragging} />
-
-          <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
-            <PanelShell
-              title={<div style={{ display: "flex", alignItems: "center", gap: 8 }}><TabChip label="EditorPro" active={rightView === "editor"} onClick={() => setRightView("editor")} /><TabChip label="Quality Gate" active={rightView === "quality"} onClick={() => setRightView("quality")} /></div>}
-            >
-              {rightView === "editor" ? (
-                <iframe src="/editor" style={{ width: "100%", height: "100%", border: "none", display: "block" }} title="EditorPro" />
-              ) : (
-                <QualityGatePanel />
-              )}
+          <ResizeHandle onPointerDown={(e) => startDrag(e, 'center-right', leftW, centerW, dragState, setIsDragging)} active={isDragging} />
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <PanelShell title={<div style={{ display: 'flex', gap: 8 }}><TabChip active={rightView === 'editor'} onClick={() => setRightView('editor')} label="EditorPro" /><TabChip active={rightView === 'quality'} onClick={() => setRightView('quality')} label="Quality Gate" /></div>}>
+              {rightView === 'editor'
+                ? <iframe src="/editor" title="editor" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
+                : <QualityGatePanel />}
             </PanelShell>
           </div>
         </div>
       </div>
-
-      <RestoreTab label="Chat" onClick={() => setLeftOpen(true)} visible={!leftOpen} position={36} />
-      <RestoreTab label="Preview" onClick={() => setCenterOpen(true)} visible={!centerOpen} position={80} />
     </div>
-  );
+  )
 }
 
-function PanelShell({ children, title, onCollapse }: { children: React.ReactNode; title: React.ReactNode; onCollapse?: () => void; }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, height: 32, padding: "0 10px", background: "#0d0d14", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.44)", textTransform: "uppercase", letterSpacing: "0.08em", flexShrink: 0 }}>{title}</div>
-        {onCollapse ? <button onClick={onCollapse} style={{ marginLeft: "auto", background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", padding: 4, borderRadius: 4, flexShrink: 0 }}>✕</button> : null}
-      </div>
-      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>{children}</div>
+function PanelShell({ children, title, toolbar, onCollapse }: { children: React.ReactNode; title: React.ReactNode; toolbar?: React.ReactNode; onCollapse?: () => void }) {
+  return <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ height: 42, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', background: '#09101a', borderBottom: '1px solid rgba(255,255,255,0.06)', color: '#eff6ff', flexShrink: 0 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{title}</div>
+      <div style={{ marginLeft: 'auto' }}>{toolbar}</div>
+      {onCollapse && <button onClick={onCollapse} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: 18 }}>×</button>}
     </div>
-  );
+    <div style={{ flex: 1, minHeight: 0 }}>{children}</div>
+  </div>
 }
 
-function TabChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void; }) {
-  return (
-    <button onClick={onClick} style={{ border: `1px solid ${active ? "rgba(111,236,208,0.24)" : "rgba(255,255,255,0.08)"}`, background: active ? "linear-gradient(180deg, rgba(88,220,197,0.18), rgba(58,171,154,0.12))" : "rgba(255,255,255,0.03)", color: active ? "#defcf3" : "rgba(255,255,255,0.55)", borderRadius: 999, padding: "6px 10px", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer" }}>{label}</button>
-  );
+function ResizeHandle({ onPointerDown, active }: { onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void; active: boolean }) {
+  return <div onPointerDown={onPointerDown} style={{ width: HANDLE_HIT, cursor: 'col-resize', background: active ? 'rgba(68,195,166,0.18)' : 'transparent', position: 'relative', flexShrink: 0 }}><div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)', width: 2, background: active ? 'rgba(68,195,166,0.65)' : 'rgba(255,255,255,0.08)' }} /></div>
 }
-
-function ResizeHandle({ onPointerDown, active }: { onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void; active: boolean; }) {
-  const [hover, setHover] = useState(false);
-  const lit = hover || active;
-  return (
-    <div onPointerDown={onPointerDown} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ width: HANDLE_HIT, flexShrink: 0, cursor: "col-resize", zIndex: 100, position: "relative", touchAction: "none", background: lit ? "rgba(124,106,247,0.15)" : "transparent", transition: "background 120ms ease" }}>
-      <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", transform: "translateX(-50%)", width: 2, background: lit ? "rgba(124,106,247,0.6)" : "rgba(255,255,255,0.06)", borderRadius: 2, transition: "background 120ms ease" }} />
-    </div>
-  );
+function MiniAction({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return <button onClick={onClick} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '6px 10px', borderRadius: 999, fontSize: 12 }}>{children}</button>
 }
-
-function RestoreTab({ label, onClick, visible, position }: { label: string; onClick: () => void; visible: boolean; position: number; }) {
-  return (
-    <button onClick={onClick} title={`Restore ${label} panel`} style={{ position: "fixed", left: 52, top: position, zIndex: 200, transform: visible ? "translateX(0)" : "translateX(-120%)", opacity: visible ? 1 : 0, pointerEvents: visible ? "auto" : "none", transition: "transform 180ms cubic-bezier(.4,0,.2,1), opacity 180ms ease", display: "flex", alignItems: "center", gap: 6, height: 28, padding: "0 12px 0 10px", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderLeft: "none", borderRadius: "0 8px 8px 0", color: "rgba(255,255,255,0.6)", fontSize: 11, fontWeight: 600, cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.08em", boxShadow: "2px 0 12px rgba(0,0,0,0.4)", whiteSpace: "nowrap" }}><span style={{ fontSize: 9, opacity: 0.5 }}>▶</span>{label}</button>
-  );
+function TabChip({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return <button onClick={onClick} style={{ border: `1px solid ${active ? 'rgba(68,195,166,0.35)' : 'rgba(255,255,255,0.08)'}`, background: active ? 'rgba(68,195,166,0.15)' : 'rgba(255,255,255,0.04)', color: '#fff', borderRadius: 999, padding: '6px 10px', fontSize: 11 }}>{label}</button>
+}
+function numberPref(key: string, fallback: number) { if (typeof window === 'undefined') return fallback; const raw = window.localStorage.getItem(key); return raw ? Number(raw) : fallback }
+function boolPref(key: string, fallback: boolean) { if (typeof window === 'undefined') return fallback; const raw = window.localStorage.getItem(key); return raw === null ? fallback : raw !== 'false' }
+function save(key: string, value: unknown) { if (typeof window !== 'undefined') window.localStorage.setItem(key, String(value)) }
+function startDrag(e: React.PointerEvent<HTMLDivElement>, handle: 'left-right' | 'center-right', leftW: number, centerW: number, dragState: React.MutableRefObject<{ handle: 'left-right' | 'center-right'; startX: number; startLeft: number; startCenter: number } | null>, setIsDragging: (value: boolean) => void) {
+  e.preventDefault()
+  dragState.current = { handle, startX: e.clientX, startLeft: leftW, startCenter: centerW }
+  setIsDragging(true)
 }
