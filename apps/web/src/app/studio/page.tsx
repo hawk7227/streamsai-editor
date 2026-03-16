@@ -6,6 +6,11 @@ import { ToolRail } from "@/components/tool-rail/ToolRail";
 import { CompactContextBar } from "@/components/preview/CompactContextBar";
 import { PreviewSurface } from "@/components/preview/PreviewSurface";
 import { DEFAULT_PROJECT_CONFIG, readProjectConfig, ToolSection } from "@/lib/project-config";
+import {
+  PreviewState,
+  DEFAULT_PREVIEW_STATE,
+  isPreviewBridgeEvent,
+} from "@/lib/preview-state";
 
 const MIN_PANEL_WIDTH = 0;
 const HANDLE_HIT = 8;
@@ -37,6 +42,9 @@ export default function StudioPage() {
   const [toolSection, setToolSection] = useState<ToolSection>("projects");
   const [previewUrl, setPreviewUrl] = useState("/preview");
 
+  // ── Preview state (shared between chat bridge and PreviewSurface) ──────────
+  const [previewState, setPreviewState] = useState<PreviewState>(DEFAULT_PREVIEW_STATE);
+
   useEffect(() => {
     const config = readProjectConfig();
     setProjectConfig(config);
@@ -48,6 +56,28 @@ export default function StudioPage() {
   useEffect(() => { localStorage.setItem("studio:leftOpen", String(leftOpen)); }, [leftOpen]);
   useEffect(() => { localStorage.setItem("studio:centerOpen", String(centerOpen)); }, [centerOpen]);
   useEffect(() => { localStorage.setItem("studio:rightView", rightView); }, [rightView]);
+
+  // ── Chat → Preview bridge ─────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (!isPreviewBridgeEvent(e.data)) return;
+      const ev = e.data;
+
+      if (ev.type === "preview:html" || ev.type === "preview:doc") {
+        setPreviewState({ mode: "html", html: ev.html, title: ev.title, updatedAt: Date.now() });
+        if (!centerOpen) setCenterOpen(true); // auto-open preview panel
+      } else if (ev.type === "preview:route") {
+        setPreviewState({ mode: "route", route: ev.route, title: ev.title, updatedAt: Date.now() });
+        setPreviewUrl(ev.route);
+        if (!centerOpen) setCenterOpen(true);
+      } else if (ev.type === "preview:component") {
+        setPreviewState({ mode: "component", code: ev.code, title: ev.title, updatedAt: Date.now() });
+        if (!centerOpen) setCenterOpen(true);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [centerOpen]);
 
   const dragState = useRef<{ handle: "left-right" | "center-right"; startX: number; startLeft: number; startCenter: number } | null>(null);
 
@@ -101,9 +131,9 @@ export default function StudioPage() {
           project={projectConfig.projectName}
           branch={projectConfig.branch}
           file={projectConfig.currentFile}
-          previewTarget={previewUrl}
+          previewTarget={previewState.mode !== "idle" ? (previewState.title ?? previewState.mode) : previewUrl}
           deviceMode="Desktop"
-          onOpenSetup={() => { if (typeof window !== 'undefined') window.location.href = '/setup'; }}
+          onOpenSetup={() => { if (typeof window !== "undefined") window.location.href = "/setup"; }}
         />
 
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
@@ -117,7 +147,12 @@ export default function StudioPage() {
 
           <div style={{ width: actualCenter, flexShrink: 0, overflow: "hidden", transition: isDragging ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)", borderLeft: "1px solid rgba(255,255,255,0.06)", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
             <PanelShell title="Preview" onCollapse={() => setCenterOpen(false)}>
-              <PreviewSurface previewUrl={previewUrl} onPreviewUrlChange={setPreviewUrl} />
+              <PreviewSurface
+                previewUrl={previewUrl}
+                onPreviewUrlChange={setPreviewUrl}
+                previewState={previewState}
+                onPreviewStateChange={setPreviewState}
+              />
             </PanelShell>
           </div>
 

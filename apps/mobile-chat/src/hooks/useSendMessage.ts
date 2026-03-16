@@ -67,6 +67,16 @@ export function useSendMessage() {
             tokens,
           })
 
+          // Auto-send HTML to preview panel when assistant generates it
+          const htmlMatch = full.match(/```html\s*\n([\s\S]*?)```/) ||
+                            full.match(/(<!DOCTYPE html>[\s\S]*?<\/html>)/i)
+          if (htmlMatch) {
+            window.parent?.postMessage(
+              { type: 'preview:html', html: htmlMatch[1].trim(), title: 'Chat HTML Preview' },
+              '*'
+            )
+          }
+
           // Auto-generate title on first exchange
           if (isFirstExchange && thread?.title === 'New conversation') {
             generateThreadTitle(content.trim(), full, model).then(title => {

@@ -143,12 +143,26 @@ function AssistantContent({ content, isStreaming, isLast }: {
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = useState(false)
+  const [previewed, setPreviewed] = useState(false)
 
   const copy = useCallback(async () => {
     await navigator.clipboard.writeText(code)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }, [code])
+
+  const isPreviewable = ['html', 'tsx', 'jsx'].includes((language ?? '').toLowerCase())
+
+  const sendToPreview = useCallback(() => {
+    const lang = (language ?? '').toLowerCase()
+    const isHtml = lang === 'html'
+    const payload = isHtml
+      ? { type: 'preview:html', html: code, title: 'Chat HTML Preview' }
+      : { type: 'preview:component', code, title: 'Chat Component Preview' }
+    window.parent?.postMessage(payload, '*')
+    setPreviewed(true)
+    setTimeout(() => setPreviewed(false), 2000)
+  }, [code, language])
 
   return (
     <div style={{
@@ -168,20 +182,38 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         <span style={{ fontSize: font.size.xs, color: color.textSub, fontFamily: font.mono }}>
           {language}
         </span>
-        <button
-          onClick={copy}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            background: 'none', border: 'none',
-            color: copied ? color.success : color.textSub,
-            fontSize: font.size.xs, cursor: 'pointer',
-            padding: '4px 8px', borderRadius: radius.xs,
-            transition: `color ${motion.snap} ${motion.easing}`,
-          }}
-        >
-          {copied ? <Check size={12} /> : <Copy size={12} />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {isPreviewable && (
+            <button
+              onClick={sendToPreview}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: previewed ? 'rgba(88,220,197,0.15)' : 'rgba(255,255,255,0.06)',
+                border: `1px solid ${previewed ? 'rgba(111,236,208,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                color: previewed ? '#9ff4df' : color.textSub,
+                fontSize: font.size.xs, cursor: 'pointer',
+                padding: '4px 8px', borderRadius: radius.xs,
+                transition: `all ${motion.snap} ${motion.easing}`,
+              }}
+            >
+              {previewed ? '✓ Sent' : '▶ Preview'}
+            </button>
+          )}
+          <button
+            onClick={copy}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: 'none', border: 'none',
+              color: copied ? color.success : color.textSub,
+              fontSize: font.size.xs, cursor: 'pointer',
+              padding: '4px 8px', borderRadius: radius.xs,
+              transition: `color ${motion.snap} ${motion.easing}`,
+            }}
+          >
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
       </div>
 
       {/* Code */}
