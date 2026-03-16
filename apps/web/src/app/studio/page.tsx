@@ -46,8 +46,7 @@ export default function StudioPage() {
   useEffect(() => { localStorage.setItem("studio:leftOpen",   String(leftOpen));   }, [leftOpen]);
   useEffect(() => { localStorage.setItem("studio:centerOpen", String(centerOpen)); }, [centerOpen]);
   useEffect(() => { localStorage.setItem("studio:rightView", rightView); }, [rightView]);
-  useEffect(() => { localStorage.setItem("studio:centerMode", centerMode); }, [centerMode]);
-  useEffect(() => { localStorage.setItem("studio:previewUrl", previewUrl); }, [previewUrl]);
+
   // Browser panel state
   const [inputUrl,       setInputUrl]       = useState("");
   const [browserLoading, setBrowserLoading] = useState(true);
@@ -63,6 +62,9 @@ const [previewUrl, setPreviewUrl] = useState(() => {
   if (typeof window === "undefined") return "";
   return localStorage.getItem("studio:previewUrl") ?? "";
 });
+  useEffect(() => { localStorage.setItem("studio:centerMode", centerMode); }, [centerMode]);
+  useEffect(() => { localStorage.setItem("studio:previewUrl", previewUrl); }, [previewUrl]);
+
   // ── postMessage bridge ───────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -82,12 +84,13 @@ const [previewUrl, setPreviewUrl] = useState(() => {
   }, []);
 
   const normalize = (url: string): string => {
-    const s = url.trim();
-    if (!s) return "";
-    if (/^(https?:|about:)/.test(s)) return s;
-    if (/^(localhost|127\.|192\.168\.)/.test(s)) return "http://" + s;
-    return "https://" + s;
-  };
+  const s = url.trim();
+  if (!s) return "";
+  if (/^(https?:|about:)/.test(s)) return s;
+  if (/^(localhost|127\.|192\.168\.)/.test(s)) return "http://" + s;
+  if (s.includes(".")) return "https://" + s;
+  return "https://duckduckgo.com/?q=" + encodeURIComponent(s);
+};
 
   const navigate = useCallback((url: string) => {
     const target = normalize(url);
@@ -196,7 +199,7 @@ const [previewUrl, setPreviewUrl] = useState(() => {
 <div style={{
   width: actualCenter, flexShrink: 0, overflow: "hidden",
   transition: isDragging ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)",
-  borderLeft:  "1px solid rgba(255,255,255,0.06)",
+  borderLeft: "1px solid rgba(255,255,255,0.06)",
   borderRight: "1px solid rgba(255,255,255,0.06)",
 }}>
   <PanelShell
@@ -207,7 +210,6 @@ const [previewUrl, setPreviewUrl] = useState(() => {
       </div>
     }
     onCollapse={() => setCenterOpen(false)}
-    isCollapsed={false}
     toolbar={
       centerMode === "browser" ? (
         <BrowserBar
