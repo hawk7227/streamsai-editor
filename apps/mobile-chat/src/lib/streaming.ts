@@ -11,7 +11,7 @@ export interface StreamCallbacks {
 }
 
 export function streamCompletion(
-  messages: Pick<Message, 'role' | 'content'>[],
+  messages: Pick<Message, 'role'> & { content: string | unknown[] }[],
   model: ModelId,
   threadId: string,
   callbacks: StreamCallbacks,
@@ -21,7 +21,7 @@ export function streamCompletion(
 }
 
 async function _stream(
-  messages: Pick<Message, 'role' | 'content'>[],
+  messages: Pick<Message, 'role'> & { content: string | unknown[] }[],
   model: ModelId,
   threadId: string,
   { onToken, onDone, onError }: StreamCallbacks,
@@ -33,7 +33,11 @@ async function _stream(
       headers: { 'Content-Type': 'application/json' },
       signal,
       body: JSON.stringify({
-        messages: messages.filter(m => m.role !== 'system' && m.content.trim().length > 0),
+        messages: messages.filter(m => {
+          if (m.role === 'system') return false
+          if (Array.isArray(m.content)) return m.content.length > 0
+          return (m.content as string).trim().length > 0
+        }),
         model,
         threadId,
         maxTokens: 4096,

@@ -32,28 +32,23 @@ export const MessageBubble = memo(function MessageBubble({ message, isLast, show
       paddingInline: spacing[4],
       animation: `msgIn 200ms ${motion.easing} both`,
     }}>
-      {/* Bubble */}
       <div style={{
-        maxWidth: 'min(92%, 920px)',
-        padding: isUser ? `${spacing[3]} ${spacing[4]}` : `${spacing[3]} ${spacing[4]}`,
+        maxWidth: isUser ? 'min(82%, 680px)' : 'min(96%, 900px)',
+        padding: isUser ? `${spacing[3]} ${spacing[4]}` : `${spacing[2]} 0`,
         borderRadius: isUser
           ? `${radius.lg} ${radius.sm} ${radius.lg} ${radius.lg}`
-          : `${radius.sm} ${radius.lg} ${radius.lg} ${radius.lg}`,
+          : 0,
         background: isError
           ? color.errorDim
           : isUser
           ? `linear-gradient(160deg, ${color.userBgLight}, ${color.userBg})`
-          : color.aiBg,
-        border: isUser
-          ? 'none'
-          : `1px solid ${isError ? color.error + '40' : color.aiBorder}`,
+          : 'transparent',
+        border: isUser ? 'none' : isError ? `1px solid ${color.error}40` : 'none',
         color: isUser ? color.userText : color.aiText,
         fontSize: font.size.base,
-        lineHeight: String(1.7),
+        lineHeight: String(1.75),
         wordBreak: 'break-word',
-        boxShadow: isUser
-          ? `0 2px 12px rgba(26,122,74,0.35)`
-          : '0 1px 4px rgba(0,0,0,0.3)',
+        boxShadow: isUser ? `0 2px 12px rgba(26,122,74,0.35)` : 'none',
         position: 'relative',
       }}>
         {isError && (
@@ -61,25 +56,20 @@ export const MessageBubble = memo(function MessageBubble({ message, isLast, show
             <AlertCircle size={13} /> Error
           </div>
         )}
-
         {isUser
           ? <span style={{ whiteSpace: 'pre-wrap' }}>{DOMPurify.sanitize(message.content, { ALLOWED_TAGS: [] })}</span>
           : <AssistantContent content={message.content} isStreaming={isStreaming} isLast={isLast} />
         }
       </div>
 
-      {/* Time + tokens */}
       {showTime && (
         <div style={{
           fontSize: font.size.xs, color: color.textFaint,
-          marginTop: '3px',
-          paddingInline: '2px',
+          marginTop: '3px', paddingInline: '2px',
           display: 'flex', gap: spacing[2], alignItems: 'center',
         }}>
           {dayjs(message.createdAt).format('h:mm A')}
-          {message.tokens && (
-            <span style={{ color: color.textFaint }}>{message.tokens} tok</span>
-          )}
+          {message.tokens && <span>{message.tokens} tok</span>}
         </div>
       )}
     </div>
@@ -94,7 +84,7 @@ function AssistantContent({ content, isStreaming, isLast }: {
   if (!content && isStreaming) return <TypingIndicator />
 
   return (
-    <div>
+    <div style={{ fontSize: font.size.base, lineHeight: String(1.75), color: '#e8eaf0' }}>
       <ReactMarkdown
         components={{
           code({ className, children }) {
@@ -105,32 +95,113 @@ function AssistantContent({ content, isStreaming, isLast }: {
               : <InlineCode>{code}</InlineCode>
           },
           p({ children }) {
-            return <p style={{ margin: 0, marginBottom: spacing[2], lineHeight: String(1.6) }}>{children}</p>
+            return <p style={{
+              margin: 0, marginBottom: '0.9em',
+              lineHeight: '1.75',
+              color: '#dde1ec',
+            }}>{children}</p>
           },
           ul({ children }) {
-            return <ul style={{ margin: `0 0 ${spacing[2]}`, paddingLeft: spacing[5], lineHeight: String(1.6) }}>{children}</ul>
+            return <ul style={{
+              margin: '0.4em 0 0.9em',
+              paddingLeft: '1.4em',
+              display: 'flex', flexDirection: 'column', gap: '0.3em',
+            }}>{children}</ul>
           },
           ol({ children }) {
-            return <ol style={{ margin: `0 0 ${spacing[2]}`, paddingLeft: spacing[5], lineHeight: String(1.6) }}>{children}</ol>
+            return <ol style={{
+              margin: '0.4em 0 0.9em',
+              paddingLeft: '0',
+              listStyle: 'none',
+              display: 'flex', flexDirection: 'column', gap: '0.5em',
+            }}>{children}</ol>
           },
-          li({ children }) {
-            return <li style={{ marginBottom: '2px' }}>{children}</li>
+          li({ children, ...props }) {
+            // Check if inside ol by checking node index
+            const isOrdered = (props as { ordered?: boolean }).ordered
+            if (isOrdered) {
+              return (
+                <li style={{ display: 'flex', gap: '0.75em', alignItems: 'flex-start', lineHeight: '1.65' }}>
+                  <span style={{
+                    flexShrink: 0, width: 22, height: 22,
+                    borderRadius: '50%',
+                    background: 'rgba(68,195,166,0.15)',
+                    border: '1px solid rgba(68,195,166,0.3)',
+                    color: '#6eecd8',
+                    fontSize: 11, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginTop: '0.15em',
+                  }}>
+                    {/* number injected by CSS counter — use index from parent */}
+                  </span>
+                  <span style={{ flex: 1, color: '#dde1ec' }}>{children}</span>
+                </li>
+              )
+            }
+            return (
+              <li style={{
+                display: 'flex', gap: '0.6em', alignItems: 'flex-start',
+                lineHeight: '1.65', color: '#dde1ec',
+              }}>
+                <span style={{ color: '#6eecd8', flexShrink: 0, marginTop: '0.35em', fontSize: 8 }}>●</span>
+                <span>{children}</span>
+              </li>
+            )
           },
           blockquote({ children }) {
             return (
               <blockquote style={{
-                margin: `0 0 ${spacing[2]}`,
+                margin: '0.5em 0',
                 paddingLeft: spacing[3],
-                borderLeft: `3px solid ${color.accent}`,
-                color: color.textSub,
+                borderLeft: `3px solid rgba(68,195,166,0.5)`,
+                color: 'rgba(255,255,255,0.55)',
+                fontStyle: 'italic',
               }}>{children}</blockquote>
             )
           },
-          h1({ children }) { return <h1 style={{ fontSize: font.size.lg, fontWeight: font.weight.bold, margin: `0 0 ${spacing[3]}`, color: color.text }}>{children}</h1> },
-          h2({ children }) { return <h2 style={{ fontSize: font.size.md, fontWeight: font.weight.semibold, margin: `0 0 ${spacing[2]}`, color: color.text }}>{children}</h2> },
-          h3({ children }) { return <h3 style={{ fontSize: font.size.base, fontWeight: font.weight.semibold, margin: `0 0 ${spacing[2]}` }}>{children}</h3> },
-          strong({ children }) { return <strong style={{ fontWeight: font.weight.semibold, color: color.text }}>{children}</strong> },
-          a({ href, children }) { return <a href={href} style={{ color: color.accent, textDecoration: 'underline' }}>{children}</a> },
+          h1({ children }) {
+            return <h1 style={{
+              fontSize: '1.3em', fontWeight: 700,
+              margin: '0.8em 0 0.4em',
+              color: '#f0f2ff',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              paddingBottom: '0.3em',
+            }}>{children}</h1>
+          },
+          h2({ children }) {
+            return <h2 style={{
+              fontSize: '1.1em', fontWeight: 600,
+              margin: '0.7em 0 0.35em',
+              color: '#e8eaf8',
+            }}>{children}</h2>
+          },
+          h3({ children }) {
+            return <h3 style={{
+              fontSize: '1em', fontWeight: 600,
+              margin: '0.6em 0 0.3em',
+              color: '#d8daf0',
+            }}>{children}</h3>
+          },
+          strong({ children }) {
+            return <strong style={{
+              fontWeight: 700,
+              color: '#c8f0e8',
+              letterSpacing: '0.01em',
+            }}>{children}</strong>
+          },
+          em({ children }) {
+            return <em style={{ color: 'rgba(255,255,255,0.75)', fontStyle: 'italic' }}>{children}</em>
+          },
+          a({ href, children }) {
+            return <a href={href} target="_blank" rel="noopener noreferrer" style={{
+              color: '#6eecd8',
+              textDecoration: 'underline',
+              textUnderlineOffset: '2px',
+            }}>{children}</a>
+          },
+          hr() {
+            return <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.08)', margin: '0.8em 0' }} />
+          },
         }}
       >
         {content}
@@ -141,7 +212,6 @@ function AssistantContent({ content, isStreaming, isLast }: {
 }
 
 // ─── Code block ───────────────────────────────────────────────────────────────
-
 
 const PREVIEW_LINES = 4
 
@@ -172,7 +242,6 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
       border: `1px solid rgba(255,255,255,0.07)`,
       background: color.codeBg,
     }}>
-      {/* Compact bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: `5px ${spacing[3]}`,
@@ -187,17 +256,12 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
               <Play size={10} /> Preview
             </button>
           )}
-          <button
-            onClick={copy}
-            style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: copied ? color.success : 'rgba(255,255,255,0.3)', fontSize: 11, cursor: 'pointer', padding: '2px 6px', borderRadius: radius.xs }}
-          >
+          <button onClick={copy} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: copied ? color.success : 'rgba(255,255,255,0.3)', fontSize: 11, cursor: 'pointer', padding: '2px 6px', borderRadius: radius.xs }}>
             {copied ? <Check size={10} /> : <Copy size={10} />}
             {copied ? 'Copied' : 'Copy'}
           </button>
         </div>
       </div>
-
-      {/* Code body with fade when collapsed */}
       <div style={{ position: 'relative' }}>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as const }}>
           <SyntaxHighlighter
@@ -211,27 +275,14 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
             {displayCode}
           </SyntaxHighlighter>
         </div>
-        {/* Fade overlay */}
         {isLong && !expanded && (
-          <div style={{
-            position: 'absolute', bottom: 0, left: 0, right: 0, height: 40,
-            background: `linear-gradient(transparent, ${color.codeBg})`,
-            pointerEvents: 'none',
-          }} />
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, background: `linear-gradient(transparent, ${color.codeBg})`, pointerEvents: 'none' }} />
         )}
       </div>
-
-      {/* Expand toggle */}
       {isLong && (
         <button
           onClick={() => setExpanded(v => !v)}
-          style={{
-            width: '100%', padding: '5px 0',
-            background: 'rgba(255,255,255,0.02)',
-            border: 'none', borderTop: '1px solid rgba(255,255,255,0.05)',
-            color: 'rgba(255,255,255,0.3)', fontSize: 11, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-          }}
+          style={{ width: '100%', padding: '5px 0', background: 'rgba(255,255,255,0.02)', border: 'none', borderTop: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.3)', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
         >
           {expanded ? '▲ Collapse' : `▼ ${lines.length} lines — expand`}
         </button>
@@ -244,42 +295,34 @@ function InlineCode({ children }: { children: React.ReactNode }) {
   return (
     <code style={{
       fontFamily: font.mono,
-      fontSize: '0.87em',
-      background: 'rgba(255,255,255,0.1)',
-      padding: '2px 5px',
+      fontSize: '0.85em',
+      background: 'rgba(110,236,216,0.08)',
+      border: '1px solid rgba(110,236,216,0.15)',
+      padding: '1px 5px',
       borderRadius: '4px',
-      color: '#e2e8f0',
+      color: '#a8f0e0',
     }}>{children}</code>
   )
 }
 
-// ─── Streaming cursor ─────────────────────────────────────────────────────────
-
 function StreamCursor() {
   return (
     <span style={{
-      display: 'inline-block',
-      width: 2, height: '1em',
-      background: color.accent,
-      marginLeft: 2,
-      verticalAlign: 'text-bottom',
-      borderRadius: 1,
+      display: 'inline-block', width: 2, height: '1em',
+      background: color.accent, marginLeft: 2,
+      verticalAlign: 'text-bottom', borderRadius: 1,
       animation: 'blink 1s step-end infinite',
     }} />
   )
 }
-
-// ─── Typing indicator (dots) ──────────────────────────────────────────────────
 
 function TypingIndicator() {
   return (
     <div style={{ display: 'flex', gap: 5, alignItems: 'center', padding: '4px 2px' }}>
       {[0, 1, 2].map(i => (
         <span key={i} style={{
-          width: 7, height: 7,
-          background: color.textSub,
-          borderRadius: '50%',
-          display: 'inline-block',
+          width: 7, height: 7, background: color.textSub,
+          borderRadius: '50%', display: 'inline-block',
           animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
         }} />
       ))}

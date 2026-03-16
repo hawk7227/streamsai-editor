@@ -4,21 +4,66 @@ import { streamCompletion, generateThreadTitle } from '@/lib/streaming'
 import { postPreviewCandidate } from '@/lib/preview'
 import type { Attachment, Message } from '@/types'
 
-// ── Studio system prompt — injected at API call time, never persisted ──────────
 const STUDIO_SYSTEM_USER = `You are StreamsAI Studio Assistant — an AI builder running inside StreamsAI Studio.
 
 You have a live Preview Panel to your right. When you generate HTML it renders there automatically.
 
-Rules:
-- When asked to build, create, show, preview, or display anything visual — always generate complete self-contained HTML with inline CSS and JS.
-- Never tell the user to copy and paste or open a text editor. The preview panel handles rendering automatically.
-- Never say you cannot open a browser window. You have a built-in preview panel.
-- Always wrap HTML in a html code fence so it is detected and sent to the preview panel.
-- For React or TSX components wrap in a tsx code fence.
-- Keep HTML fully self-contained with no external dependencies unless from a CDN link.
-- After generating previewable content briefly describe what was built. Do not give manual instructions.`
+Capabilities:
+- You CAN receive and read images, text files, code files, HTML, CSS, JSON, and markdown sent as attachments.
+- When an image is attached you can see and describe it, analyze UI, suggest improvements, or recreate it as HTML/CSS.
+- When a text or code file is attached you can read, analyze, modify, or extend it.
+- You CANNOT process binary files like ZIPs, PDFs, or executables directly — for those, ask the user to extract the text content first.
 
-const STUDIO_SYSTEM_ACK = `Understood. I am StreamsAI Studio Assistant with a live preview panel. I will generate complete HTML wrapped in code fences and it will render in the preview panel automatically. I will never tell users to copy paste or open external editors.`
+Rules:
+- When asked to build, create, show, or preview anything visual — generate complete self-contained HTML with inline CSS and JS.
+- Always wrap HTML in a html code fence so it renders in the preview panel automatically.
+- For React/TSX wrap in a tsx code fence.
+- Never tell users to copy/paste or open a text editor.
+- After generating previewable content, briefly describe what was built.`
+
+const STUDIO_SYSTEM_ACK = `Understood. I am StreamsAI Studio Assistant. I can see images and read text/code files when attached. I generate HTML/TSX directly into the live preview panel.`
+
+// Build API message content — handles text + image attachments
+function buildMessageContent(content: string, attachments: Attachment[]): string | { type: string; text?: string; source?: unknown }[] {
+  const imageAttachments = attachments.filter(a => a.type.startsWith('image/'))
+  const textAttachments = attachments.filter(a =>
+    a.type.startsWith('text/') ||
+    /\.(ts|tsx|js|jsx|html|css|json|md|txt|csv)$/i.test(a.name)
+  )
+
+  // No attachments — plain string
+  if (attachments.length === 0) return content
+
+  // Build multi-part content for Anthropic vision
+  const parts: { type: string; text?: string; source?: unknown }[] = []
+
+  // Add text file contents inline
+  if (textAttachments.length > 0) {
+    const fileTexts = textAttachments.map(a => {
+      try {
+        const text = atob(a.dataUrl.split(',')[1] ?? '')
+        return `\n\n[File: ${a.name}]\n\`\`\`\n${text.slice(0, 8000)}\n\`\`\``
+      } catch {
+        return `\n\n[File: ${a.name} — could not decode]`
+      }
+    }).join('')
+    parts.push({ type: 'text', text: content + fileTexts })
+  } else {
+    parts.push({ type: 'text', text: content })
+  }
+
+  // Add images
+  for (const img of imageAttachments) {
+    const [header, data] = img.dataUrl.split(',')
+    const mediaType = header?.match(/:(.*?);/)?.[1] ?? 'image/jpeg'
+    parts.push({
+      type: 'image',
+      source: { type: 'base64', media_type: mediaType, data: data ?? '' }
+    })
+  }
+
+  return parts
+}
 
 export function useSendMessage() {
   const abortRef = useRef<AbortController | null>(null)
@@ -50,7 +95,6 @@ export function useSendMessage() {
       attachments: [],
     })
 
-    // Filter empty content to prevent Zod min(1) validation errors
     const history = (messages[activeThreadId] ?? [])
       .filter((m: Message) => m.status === 'done' && m.id !== placeholder.id && m.content.trim().length > 0)
       .map((m: Message) => ({ role: m.role, content: m.content.trim() }))
@@ -59,17 +103,20 @@ export function useSendMessage() {
     const model = thread?.model ?? 'claude-sonnet-4-5'
     const isFirstExchange = history.filter((m: { role: string }) => m.role === 'user').length === 1
 
+    // Build current user message with attachments
+    const userContent = buildMessageContent(content.trim(), attachments)
+
     const apiMessages = [
       { role: 'user' as const, content: STUDIO_SYSTEM_USER },
       { role: 'assistant' as const, content: STUDIO_SYSTEM_ACK },
       ...history,
-      { role: 'user' as const, content: content.trim() },
+      { role: 'user' as const, content: userContent },
     ]
 
     let accumulated = ''
 
     streamCompletion(
-      apiMessages,
+      apiMessages as Parameters<typeof streamCompletion>[0],
       model,
       activeThreadId,
       {
@@ -79,10 +126,7 @@ export function useSendMessage() {
         },
         onDone: (full, tokens) => {
           updateMessage(placeholder.id, activeThreadId, { content: full, status: 'done', tokens })
-
-          // Auto-post preview candidate to Studio parent
           postPreviewCandidate(full)
-
           if (isFirstExchange && thread?.title === 'New conversation') {
             generateThreadTitle(content.trim(), full, model).then(title => {
               updateThread(activeThreadId, { title })
