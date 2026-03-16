@@ -18,7 +18,7 @@ const HANDLE_HIT = 8
 
 type DeviceKey = 'desktop' | 'iphone'
 type RightView = 'editor' | 'quality'
-type ToolKey = 'projects' | 'files' | 'uploads' | 'artifacts' | 'settings'
+type ToolKey = 'new-chat' | 'search' | 'images' | 'apps' | 'research' | 'codex' | 'models' | 'projects' | 'files' | 'uploads' | 'artifacts' | 'settings'
 
 export default function StudioPage() {
   const [leftW, setLeftW] = useState(() => numberPref('studio:leftW', 420))

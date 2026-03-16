@@ -1,7 +1,7 @@
 "use client"
 import { useMemo, useState } from 'react'
 
-type ToolKey = 'projects' | 'files' | 'uploads' | 'artifacts' | 'settings'
+export type ToolKey = 'new-chat' | 'search' | 'images' | 'apps' | 'research' | 'codex' | 'models' | 'projects' | 'files' | 'uploads' | 'artifacts' | 'settings'
 
 type Props = {
   expanded: boolean
@@ -12,29 +12,57 @@ type Props = {
   currentFile: string
   onSelectFile(path: string): void
   onUpload(file: File): void
+  onNewChat?(): void
 }
 
-const tools: Array<{ key: ToolKey; icon: string; label: string }> = [
-  { key: 'projects', icon: '⊞', label: 'Projects' },
-  { key: 'files',    icon: '⋮≡', label: 'Files' },
-  { key: 'uploads',  icon: '↑',  label: 'Uploads' },
-  { key: 'artifacts',icon: '◈',  label: 'Artifacts' },
-  { key: 'settings', icon: '⚙',  label: 'Settings' },
+type ToolDef = { key: ToolKey; icon: string; label: string; action?: boolean; dividerAfter?: boolean }
+
+const tools: ToolDef[] = [
+  { key: 'new-chat',  icon: '✎',  label: 'New chat',      action: true },
+  { key: 'search',    icon: '⌕',  label: 'Search chats',  dividerAfter: true },
+  { key: 'images',    icon: '⊡',  label: 'Images' },
+  { key: 'apps',      icon: '⊞',  label: 'Apps' },
+  { key: 'research',  icon: '⊕',  label: 'Deep research' },
+  { key: 'codex',     icon: '⌥',  label: 'Codex' },
+  { key: 'models',    icon: '◈',  label: 'Models',        dividerAfter: true },
+  { key: 'projects',  icon: '▤',  label: 'Projects' },
+  { key: 'files',     icon: '≡',  label: 'Files' },
+  { key: 'uploads',   icon: '↑',  label: 'Uploads' },
+  { key: 'artifacts', icon: '◇',  label: 'Artifacts',     dividerAfter: true },
+  { key: 'settings',  icon: '⚙',  label: 'Settings' },
+]
+
+// Mock recent chats — will be replaced with real data from chat store
+const RECENT_CHATS = [
+  'Build landing page',
+  'Fix auth flow',
+  'Review patient panel',
+  'Dropshipping pipeline',
+  'Doctor panel STREAMS',
 ]
 
 export function ToolRail(props: Props) {
-  const { expanded, onToggle, activeTool, onTool, files, currentFile, onSelectFile, onUpload } = props
+  const { expanded, onToggle, activeTool, onTool, files, currentFile, onSelectFile, onUpload, onNewChat } = props
   const [search, setSearch] = useState('')
+  const [chatSearch, setChatSearch] = useState('')
 
   const filteredFiles = useMemo(
     () => files.filter(f => f.toLowerCase().includes(search.toLowerCase())).slice(0, 200),
     [files, search]
   )
 
-  // Clicking a tool when collapsed: auto-expand and select
-  const handleTool = (key: ToolKey) => {
+  const filteredChats = useMemo(
+    () => RECENT_CHATS.filter(c => c.toLowerCase().includes(chatSearch.toLowerCase())),
+    [chatSearch]
+  )
+
+  const handleTool = (tool: ToolDef) => {
+    if (tool.key === 'new-chat') {
+      onNewChat?.()
+      return
+    }
     if (!expanded) onToggle()
-    onTool(key)
+    onTool(tool.key)
   }
 
   return (
@@ -49,129 +77,195 @@ export function ToolRail(props: Props) {
       flexShrink: 0,
     }}>
       {/* Toggle */}
-      <button
-        onClick={onToggle}
-        title={expanded ? 'Collapse' : 'Expand'}
-        style={toggleStyle}
-      >
+      <button onClick={onToggle} title={expanded ? 'Collapse' : 'Expand'} style={toggleStyle}>
         {expanded ? '‹' : '›'}
       </button>
 
-      {/* Tool icons */}
-      {tools.map(tool => {
-        const active = activeTool === tool.key
-        return (
-          <button
-            key={tool.key}
-            onClick={() => handleTool(tool.key)}
-            title={tool.label}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: expanded ? '12px 14px' : '14px 0',
-              justifyContent: expanded ? 'flex-start' : 'center',
-              background: active ? 'rgba(68,195,166,0.14)' : 'transparent',
-              borderLeft: active ? '2px solid rgba(68,195,166,0.7)' : '2px solid transparent',
-              border: 'none',
-              borderRight: 'none',
-              color: active ? '#6eecd8' : 'rgba(255,255,255,0.52)',
-              fontSize: expanded ? 13 : 16,
-              cursor: 'pointer',
-              width: '100%',
-              textAlign: 'left',
-              transition: 'background 120ms ease, color 120ms ease',
-              letterSpacing: expanded ? '0.04em' : 0,
-              fontWeight: active ? 600 : 400,
-            }}
-          >
-            <span style={{ fontSize: 15, minWidth: 20, textAlign: 'center', lineHeight: 1 }}>
-              {tool.icon}
-            </span>
-            {expanded && <span>{tool.label}</span>}
-          </button>
-        )
-      })}
-
-      {/* Expanded panels */}
-      {expanded && activeTool === 'files' && (
-        <div style={panelStyle}>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search files…"
-            style={inputStyle}
-          />
-          <div style={{ overflow: 'auto', flex: 1 }}>
-            {filteredFiles.length === 0 && (
-              <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12, padding: '8px 4px' }}>
-                {files.length === 0 ? 'Loading files…' : 'No results'}
-              </div>
-            )}
-            {filteredFiles.map(file => (
+      {/* Tool items */}
+      <div style={{ display: 'flex', flexDirection: 'column', overflowY: 'auto', flex: 1 }}>
+        {tools.map(tool => {
+          const active = activeTool === tool.key
+          const isAction = tool.action
+          return (
+            <div key={tool.key}>
               <button
-                key={file}
-                onClick={() => onSelectFile(file)}
+                onClick={() => handleTool(tool)}
+                title={tool.label}
                 style={{
-                  ...fileButtonStyle,
-                  background: file === currentFile ? 'rgba(68,195,166,0.16)' : 'transparent',
-                  color: file === currentFile ? '#6eecd8' : '#c7d8f8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: expanded ? '10px 14px' : '12px 0',
+                  justifyContent: expanded ? 'flex-start' : 'center',
+                  background: active ? 'rgba(68,195,166,0.12)' : 'transparent',
+                  borderLeft: active ? '2px solid rgba(68,195,166,0.7)' : '2px solid transparent',
+                  border: 'none',
+                  color: isAction
+                    ? 'rgba(255,255,255,0.85)'
+                    : active
+                    ? '#6eecd8'
+                    : 'rgba(255,255,255,0.48)',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  width: '100%',
+                  textAlign: 'left',
+                  transition: 'background 120ms ease, color 120ms ease',
+                  fontWeight: active ? 600 : 400,
                 }}
               >
-                {file}
+                <span style={{ fontSize: 15, minWidth: 20, textAlign: 'center', lineHeight: 1 }}>
+                  {tool.icon}
+                </span>
+                {expanded && <span style={{ whiteSpace: 'nowrap' }}>{tool.label}</span>}
+              </button>
+
+              {tool.dividerAfter && expanded && (
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 0' }} />
+              )}
+            </div>
+          )
+        })}
+
+        {/* Recent chats section — only when expanded and no tool active or search active */}
+        {expanded && (activeTool === 'search' || activeTool === null) && (
+          <div style={{ padding: '8px 12px', marginTop: 4 }}>
+            {activeTool === 'search' && (
+              <input
+                value={chatSearch}
+                onChange={e => setChatSearch(e.target.value)}
+                placeholder="Search chats…"
+                autoFocus
+                style={inputStyle}
+              />
+            )}
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '8px 2px 6px', fontWeight: 600 }}>
+              Your chats
+            </div>
+            {filteredChats.map(chat => (
+              <button key={chat} style={chatButtonStyle}>
+                {chat}
               </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {expanded && activeTool === 'uploads' && (
-        <div style={panelStyle}>
-          <label style={{
-            display: 'block', width: '100%', textAlign: 'center',
-            padding: '12px 10px', borderRadius: 10, cursor: 'pointer',
-            border: '1px dashed rgba(68,195,166,0.35)', color: '#6eecd8', fontSize: 13,
-          }}>
-            + Upload file
-            <input type="file" style={{ display: 'none' }} onChange={e => {
-              const file = e.target.files?.[0]
-              if (file) onUpload(file)
-            }} />
-          </label>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 1.6 }}>
-            HTML, TSX, docs, and images are previewed instantly in the preview panel.
+        {/* Files panel */}
+        {expanded && activeTool === 'files' && (
+          <div style={panelStyle}>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search files…"
+              style={inputStyle}
+            />
+            <div style={{ overflow: 'auto', flex: 1 }}>
+              {filteredFiles.length === 0 && (
+                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '8px 4px' }}>
+                  {files.length === 0 ? 'Loading files…' : 'No results'}
+                </div>
+              )}
+              {filteredFiles.map(file => (
+                <button
+                  key={file}
+                  onClick={() => onSelectFile(file)}
+                  style={{
+                    ...fileButtonStyle,
+                    background: file === currentFile ? 'rgba(68,195,166,0.16)' : 'transparent',
+                    color: file === currentFile ? '#6eecd8' : '#c7d8f8',
+                  }}
+                >
+                  {file}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {expanded && activeTool === 'projects' && (
-        <div style={panelStyle}>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 1.6 }}>
-            Active project context is shown in the top bar. Switch projects via <strong style={{ color: '#6eecd8' }}>/setup</strong>.
+        {/* Uploads panel */}
+        {expanded && activeTool === 'uploads' && (
+          <div style={panelStyle}>
+            <label style={{
+              display: 'block', width: '100%', textAlign: 'center',
+              padding: '14px 10px', borderRadius: 10, cursor: 'pointer',
+              border: '1px dashed rgba(68,195,166,0.35)', color: '#6eecd8', fontSize: 13,
+            }}>
+              + Upload file
+              <input type="file" style={{ display: 'none' }} onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) onUpload(file)
+              }} />
+            </label>
+            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, lineHeight: 1.6 }}>
+              HTML, TSX, docs, and images preview instantly in the preview panel.
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {expanded && activeTool === 'artifacts' && (
-        <div style={panelStyle}>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 1.6 }}>
-            Generated artifacts appear here after staging and applying changes.
+        {/* Images panel */}
+        {expanded && activeTool === 'images' && (
+          <div style={panelStyle}>
+            <div style={comingSoonStyle}>Image viewer and generator coming soon.</div>
           </div>
-        </div>
-      )}
+        )}
 
-      {expanded && activeTool === 'settings' && (
-        <div style={panelStyle}>
-          <a href="/setup" style={{ display: 'block', padding: '10px 12px', borderRadius: 10, background: 'rgba(68,195,166,0.12)', border: '1px solid rgba(68,195,166,0.24)', color: '#6eecd8', fontSize: 13, textDecoration: 'none', textAlign: 'center' }}>
-            Open Setup →
-          </a>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 1.6 }}>
-            Configure GitHub, Supabase, and Vercel connections.
+        {/* Apps panel */}
+        {expanded && activeTool === 'apps' && (
+          <div style={panelStyle}>
+            <div style={comingSoonStyle}>GitHub, Supabase, and Vercel integrations.</div>
+            <a href="/setup" style={linkButtonStyle}>Open Setup →</a>
           </div>
-        </div>
-      )}
+        )}
 
-      <div style={{ marginTop: 'auto', padding: '12px 14px', color: 'rgba(255,255,255,0.2)', fontSize: 10, letterSpacing: '0.08em' }}>
+        {/* Research panel */}
+        {expanded && activeTool === 'research' && (
+          <div style={panelStyle}>
+            <div style={comingSoonStyle}>Deep research and long-form analysis tools coming soon.</div>
+          </div>
+        )}
+
+        {/* Codex panel */}
+        {expanded && activeTool === 'codex' && (
+          <div style={panelStyle}>
+            <div style={comingSoonStyle}>Codex — agentic code execution and file operations.</div>
+          </div>
+        )}
+
+        {/* Models panel */}
+        {expanded && activeTool === 'models' && (
+          <div style={panelStyle}>
+            {['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5', 'gpt-4o', 'gpt-4o-mini'].map(m => (
+              <button key={m} style={{ ...fileButtonStyle, color: '#c7d8f8' }}>{m}</button>
+            ))}
+          </div>
+        )}
+
+        {/* Projects panel */}
+        {expanded && activeTool === 'projects' && (
+          <div style={panelStyle}>
+            {['streamsai-editor', 'hipa-doctor-panel', 'patientpanel', 'dropshipping-management', 'file-engine-plateform'].map(p => (
+              <button key={p} style={{ ...fileButtonStyle, color: '#c7d8f8' }}>{p}</button>
+            ))}
+          </div>
+        )}
+
+        {/* Artifacts panel */}
+        {expanded && activeTool === 'artifacts' && (
+          <div style={panelStyle}>
+            <div style={comingSoonStyle}>Generated artifacts, staged previews, and exports appear here.</div>
+          </div>
+        )}
+
+        {/* Settings panel */}
+        {expanded && activeTool === 'settings' && (
+          <div style={panelStyle}>
+            <a href="/setup" style={linkButtonStyle}>Open Setup →</a>
+            <div style={comingSoonStyle}>Configure GitHub, Supabase, and Vercel connections.</div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: expanded ? '10px 14px' : '10px 0', textAlign: expanded ? 'left' : 'center', color: 'rgba(255,255,255,0.18)', fontSize: 10, letterSpacing: '0.08em', borderTop: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
         {expanded ? 'STREAMSAI' : 'S'}
       </div>
     </div>
@@ -182,11 +276,10 @@ const toggleStyle: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   height: 40, width: '100%', background: 'transparent',
   border: 'none', borderBottom: '1px solid rgba(255,255,255,0.06)',
-  color: 'rgba(255,255,255,0.35)', fontSize: 18, cursor: 'pointer',
-  flexShrink: 0,
+  color: 'rgba(255,255,255,0.3)', fontSize: 18, cursor: 'pointer', flexShrink: 0,
 }
 const panelStyle: React.CSSProperties = {
-  display: 'flex', flexDirection: 'column', gap: 10, padding: 12,
+  display: 'flex', flexDirection: 'column', gap: 8, padding: 12,
   borderTop: '1px solid rgba(255,255,255,0.06)', minHeight: 0, flex: 1, overflow: 'hidden',
 }
 const inputStyle: React.CSSProperties = {
@@ -197,6 +290,20 @@ const inputStyle: React.CSSProperties = {
 const fileButtonStyle: React.CSSProperties = {
   display: 'block', width: '100%', textAlign: 'left',
   padding: '7px 10px', borderRadius: 8, border: 'none',
-  fontSize: 11, wordBreak: 'break-all', cursor: 'pointer',
-  lineHeight: 1.5,
+  fontSize: 11, wordBreak: 'break-all', cursor: 'pointer', lineHeight: 1.5,
+}
+const chatButtonStyle: React.CSSProperties = {
+  display: 'block', width: '100%', textAlign: 'left',
+  padding: '8px 10px', borderRadius: 8, border: 'none',
+  fontSize: 12, cursor: 'pointer', lineHeight: 1.5,
+  color: 'rgba(255,255,255,0.65)', background: 'transparent',
+  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+}
+const comingSoonStyle: React.CSSProperties = {
+  color: 'rgba(255,255,255,0.4)', fontSize: 12, lineHeight: 1.6,
+}
+const linkButtonStyle: React.CSSProperties = {
+  display: 'block', padding: '10px 12px', borderRadius: 10,
+  background: 'rgba(68,195,166,0.12)', border: '1px solid rgba(68,195,166,0.24)',
+  color: '#6eecd8', fontSize: 13, textDecoration: 'none', textAlign: 'center',
 }
