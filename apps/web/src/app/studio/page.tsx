@@ -88,8 +88,9 @@ export default function StudioPage() {
     const onMove = (e: PointerEvent) => {
       if (!dragState.current) return
       const dx = e.clientX - dragState.current.startX
-      if (dragState.current.handle === 'left-right') setLeftW(Math.max(0, dragState.current.startLeft + dx))
-      else setCenterW(Math.max(0, dragState.current.startCenter + dx))
+      const maxW = typeof window !== 'undefined' ? window.innerWidth - 400 : 1200
+      if (dragState.current.handle === 'left-right') setLeftW(Math.min(maxW, Math.max(260, dragState.current.startLeft + dx)))
+      else setCenterW(Math.min(maxW, Math.max(320, dragState.current.startCenter + dx)))
     }
     const onUp = () => {
       dragState.current = null
