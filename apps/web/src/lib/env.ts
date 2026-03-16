@@ -14,4 +14,21 @@ export const env = {
   get isProduction() {
     return process.env.NODE_ENV === 'production'
   },
+
+  // GitHub App
+  get githubAppId(): number {
+    const val = process.env.GITHUB_APP_ID?.trim()
+    if (!val) throw new Error('GITHUB_APP_ID is not set')
+    return Number(val)
+  },
+  get githubAppPrivateKey(): string {
+    const val = process.env.GITHUB_APP_PRIVATE_KEY?.trim()
+    if (!val) throw new Error('GITHUB_APP_PRIVATE_KEY is not set')
+    return val.replace(/\\n/g, '\n')
+  },
+  get githubInstallationId(): number {
+    const val = process.env.GITHUB_INSTALLATION_ID?.trim()
+    if (!val) throw new Error('GITHUB_INSTALLATION_ID is not set')
+    return Number(val)
+  },
 }
