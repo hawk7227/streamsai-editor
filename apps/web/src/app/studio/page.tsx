@@ -21,11 +21,18 @@ type RightView = 'editor' | 'quality'
 type ToolKey = 'new-chat' | 'search' | 'images' | 'apps' | 'research' | 'codex' | 'models' | 'projects' | 'files' | 'uploads' | 'artifacts' | 'settings'
 
 export default function StudioPage() {
-  const [leftW, setLeftW] = useState(() => numberPref('studio:leftW', 420))
-  const [centerW, setCenterW] = useState(() => numberPref('studio:centerW', 760))
-  const [leftOpen, setLeftOpen] = useState(() => boolPref('studio:leftOpen', true))
-  const [centerOpen, setCenterOpen] = useState(() => boolPref('studio:centerOpen', true))
+  const [leftW, setLeftW] = useState(() => {
+    const v = numberPref('studio:leftW', 380)
+    return v < 200 ? 380 : v  // reset if collapsed to unusable width
+  })
+  const [centerW, setCenterW] = useState(() => {
+    const v = numberPref('studio:centerW', 640)
+    return v < 200 ? 640 : v
+  })
+  const [leftOpen, setLeftOpen] = useState(true)  // always start open
+  const [centerOpen, setCenterOpen] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
+  const [activeHandle, setActiveHandle] = useState<'left-right' | 'center-right' | null>(null)
   const [rightView, setRightView] = useState<RightView>(() => (typeof window === 'undefined' ? 'editor' : (window.localStorage.getItem('studio:rightView') as RightView) || 'editor'))
   const [toolExpanded, setToolExpanded] = useState(() => boolPref('studio:toolExpanded', false))
   const [activeTool, setActiveTool] = useState<ToolKey | null>(null)
@@ -81,12 +88,13 @@ export default function StudioPage() {
     const onMove = (e: PointerEvent) => {
       if (!dragState.current) return
       const dx = e.clientX - dragState.current.startX
-      if (dragState.current.handle === 'left-right') setLeftW(Math.max(300, dragState.current.startLeft + dx))
-      else setCenterW(Math.max(420, dragState.current.startCenter + dx))
+      if (dragState.current.handle === 'left-right') setLeftW(Math.max(0, dragState.current.startLeft + dx))
+      else setCenterW(Math.max(0, dragState.current.startCenter + dx))
     }
     const onUp = () => {
       dragState.current = null
       setIsDragging(false)
+      setActiveHandle(null)
     }
     window.addEventListener('pointermove', onMove, { passive: true })
     window.addEventListener('pointerup', onUp)
@@ -180,7 +188,7 @@ export default function StudioPage() {
               <iframe ref={chatIframeRef} src={MOBILE_CHAT_URL} title="StreamsAI Chat" allow="clipboard-write; clipboard-read" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
             </PanelShell>
           </div>
-          <ResizeHandle onPointerDown={(e) => startDrag(e, 'left-right', leftW, centerW, dragState, setIsDragging)} active={isDragging} />
+          <ResizeHandle onPointerDown={(e) => startDrag(e, 'left-right', leftW, centerW, dragState, setIsDragging, setActiveHandle)} active={activeHandle === 'left-right'} />
           <div style={{ width: actualCenter, minWidth: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
             <PanelShell
               title="Preview"
@@ -206,7 +214,7 @@ export default function StudioPage() {
               />
             </PanelShell>
           </div>
-          <ResizeHandle onPointerDown={(e) => startDrag(e, 'center-right', leftW, centerW, dragState, setIsDragging)} active={isDragging} />
+          <ResizeHandle onPointerDown={(e) => startDrag(e, 'center-right', leftW, centerW, dragState, setIsDragging, setActiveHandle)} active={activeHandle === 'center-right'} />
           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
             <PanelShell title={<div style={{ display: 'flex', gap: 8 }}><TabChip active={rightView === 'editor'} onClick={() => setRightView('editor')} label="EditorPro" /><TabChip active={rightView === 'quality'} onClick={() => setRightView('quality')} label="Quality Gate" /></div>}>
               {rightView === 'editor'
@@ -243,8 +251,9 @@ function TabChip({ active, label, onClick }: { active: boolean; label: string; o
 function numberPref(key: string, fallback: number) { if (typeof window === 'undefined') return fallback; const raw = window.localStorage.getItem(key); return raw ? Number(raw) : fallback }
 function boolPref(key: string, fallback: boolean) { if (typeof window === 'undefined') return fallback; const raw = window.localStorage.getItem(key); return raw === null ? fallback : raw !== 'false' }
 function save(key: string, value: unknown) { if (typeof window !== 'undefined') window.localStorage.setItem(key, String(value)) }
-function startDrag(e: React.PointerEvent<HTMLDivElement>, handle: 'left-right' | 'center-right', leftW: number, centerW: number, dragState: React.MutableRefObject<{ handle: 'left-right' | 'center-right'; startX: number; startLeft: number; startCenter: number } | null>, setIsDragging: (value: boolean) => void) {
+function startDrag(e: React.PointerEvent<HTMLDivElement>, handle: 'left-right' | 'center-right', leftW: number, centerW: number, dragState: React.MutableRefObject<{ handle: 'left-right' | 'center-right'; startX: number; startLeft: number; startCenter: number } | null>, setIsDragging: (value: boolean) => void, setActiveHandle: (h: 'left-right' | 'center-right' | null) => void) {
   e.preventDefault()
   dragState.current = { handle, startX: e.clientX, startLeft: leftW, startCenter: centerW }
   setIsDragging(true)
+  setActiveHandle(handle)
 }
