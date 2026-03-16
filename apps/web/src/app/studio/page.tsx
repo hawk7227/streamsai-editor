@@ -87,6 +87,7 @@ export default function StudioPage() {
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       if (!dragState.current) return
+      e.preventDefault()
       const dx = e.clientX - dragState.current.startX
       const maxW = typeof window !== 'undefined' ? window.innerWidth - 400 : 1200
       if (dragState.current.handle === 'left-right') setLeftW(Math.min(maxW, Math.max(260, dragState.current.startLeft + dx)))
@@ -97,7 +98,7 @@ export default function StudioPage() {
       setIsDragging(false)
       setActiveHandle(null)
     }
-    window.addEventListener('pointermove', onMove, { passive: true })
+    window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
     return () => {
@@ -183,14 +184,14 @@ export default function StudioPage() {
       />
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
         <CompactContextBar project={project} previewMode={preview.mode === 'route' ? preview.route : preview.mode} deviceLabel={device === 'iphone' ? 'iPhone 14 Pro Max' : 'Desktop'} />
-        <div style={{ display: 'flex', minHeight: 0, flex: 1 }}>
-          <div style={{ width: actualLeft, minWidth: 0, overflow: 'hidden', transition: isDragging ? 'none' : 'width 160ms ease' }}>
+        <div style={{ display: 'flex', minHeight: 0, flex: 1, height: '100%' }}>
+          <div style={{ width: actualLeft, flexShrink: 0, overflow: 'hidden', transition: isDragging ? 'none' : 'width 160ms cubic-bezier(.4,0,.2,1)' }}>
             <PanelShell title="Chat" onCollapse={() => setLeftOpen(false)}>
               <iframe ref={chatIframeRef} src={MOBILE_CHAT_URL} title="StreamsAI Chat" allow="clipboard-write; clipboard-read" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
             </PanelShell>
           </div>
           <ResizeHandle onPointerDown={(e) => startDrag(e, 'left-right', leftW, centerW, dragState, setIsDragging, setActiveHandle)} active={activeHandle === 'left-right'} />
-          <div style={{ width: actualCenter, minWidth: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+          <div style={{ width: actualCenter, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden', transition: isDragging ? 'none' : 'width 160ms cubic-bezier(.4,0,.2,1)' }}>
             <PanelShell
               title="Preview"
               toolbar={<div style={{ display: 'flex', gap: 8 }}><MiniAction onClick={stageCurrentPreview}>Stage</MiniAction><MiniAction onClick={() => setSafeZone((v) => !v)}>{safeZone ? 'Safe Zone On' : 'Safe Zone Off'}</MiniAction></div>}
@@ -236,7 +237,7 @@ function PanelShell({ children, title, toolbar, onCollapse }: { children: React.
       <div style={{ marginLeft: 'auto' }}>{toolbar}</div>
       {onCollapse && <button onClick={onCollapse} style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.45)', fontSize: 18 }}>×</button>}
     </div>
-    <div style={{ flex: 1, minHeight: 0 }}>{children}</div>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}>{children}</div>
   </div>
 }
 
