@@ -30,9 +30,21 @@ export async function getOctokit(): Promise<Octokit> {
 export async function listRepoFiles(owner: string, repo: string, branch: string): Promise<string[]> {
   const octokit = await getOctokit()
   const { data } = await octokit.git.getTree({ owner, repo, tree_sha: branch, recursive: '1' })
+  const EXCLUDED_DIRS = ['streamsai-builder-contract', 'node_modules', '.next', 'builder-batches', 'dist', '.git']
+  const ALLOWED_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.html', '.md', '.sql', '.yaml', '.yml']
+  const EXCLUDED_NAMES = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'tsconfig.tsbuildinfo']
+
   return (data.tree ?? [])
-    .filter(f => f.type === 'blob' && f.path)
+    .filter(f => {
+      if (f.type !== 'blob' || !f.path) return false
+      const p = f.path
+      if (EXCLUDED_DIRS.some(d => p.startsWith(d + '/'))) return false
+      if (EXCLUDED_NAMES.some(n => p === n || p.endsWith('/' + n))) return false
+      if (!ALLOWED_EXTS.some(ext => p.endsWith(ext))) return false
+      return true
+    })
     .map(f => f.path!)
+    .sort()
 }
 
 // ── Read file ─────────────────────────────────────────────────────────────────
