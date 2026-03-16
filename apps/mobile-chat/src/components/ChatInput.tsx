@@ -14,13 +14,14 @@ export function ChatInput() {
   const [value, setValue] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [modelOpen, setModelOpen] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const thread = threads.find(t => t.id === activeThreadId)
   const activeMessages = activeThreadId ? (messages[activeThreadId] ?? []) : []
   const isStreaming = activeMessages.some(m => m.status === 'streaming')
-  const canSend = (value.trim().length > 0 || attachments.length > 0) && !isStreaming
+  const canSend = (value.trim().length > 0 || attachments.length > 0) && !isStreaming && !uploading
 
   const autoResize = useCallback(() => {
     const ta = textareaRef.current
@@ -46,19 +47,25 @@ export function ChatInput() {
 
   const handleFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
-    const loaded = await Promise.all(
-      files.map(f => new Promise<Attachment>((res, rej) => {
-        const reader = new FileReader()
-        reader.onload = ev => res({
-          id: nanoid(), name: f.name, type: f.type, size: f.size,
-          dataUrl: ev.target?.result as string,
-        })
-        reader.onerror = rej
-        reader.readAsDataURL(f)
-      }))
-    )
-    setAttachments(prev => [...prev, ...loaded])
-    e.target.value = ''
+    if (!files.length) return
+    setUploading(true)
+    try {
+      const loaded = await Promise.all(
+        files.map(f => new Promise<Attachment>((res, rej) => {
+          const reader = new FileReader()
+          reader.onload = ev => res({
+            id: nanoid(), name: f.name, type: f.type, size: f.size,
+            dataUrl: ev.target?.result as string,
+          })
+          reader.onerror = rej
+          reader.readAsDataURL(f)
+        }))
+      )
+      setAttachments(prev => [...prev, ...loaded])
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
   }, [])
 
   if (!activeThreadId) return null
@@ -73,23 +80,38 @@ export function ChatInput() {
       paddingRight: spacing[3],
       paddingBottom: `max(${spacing[4]}, env(safe-area-inset-bottom, 16px))`,
     }}>
+      {/* Upload progress */}
+      {uploading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: spacing[2], marginBottom: spacing[2], padding: '6px 10px', background: 'rgba(68,195,166,0.08)', borderRadius: radius.md, border: '1px solid rgba(68,195,166,0.2)' }}>
+          <div style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid rgba(68,195,166,0.3)', borderTop: `2px solid ${color.accent}`, animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+          <span style={{ fontSize: font.size.xs, color: color.accent }}>Reading file…</span>
+        </div>
+      )}
+
       {/* Attachments */}
       {attachments.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: spacing[2], marginBottom: spacing[2] }}>
           {attachments.map(att => (
             <div key={att.id} style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              padding: '4px 8px 4px 10px',
-              background: color.bgCard, borderRadius: radius.full,
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: att.type.startsWith('image/') ? '3px 8px 3px 3px' : '4px 8px 4px 10px',
+              background: color.bgCard, borderRadius: radius.sm,
               fontSize: font.size.xs, color: color.textSub,
               border: `1px solid ${color.border}`,
+              maxWidth: 180,
             }}>
-              <span style={{ maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {att.type.startsWith('image/') && (
+                <img src={att.dataUrl} alt={att.name} style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />
+              )}
+              {!att.type.startsWith('image/') && (
+                <span style={{ fontSize: 14, flexShrink: 0 }}>📄</span>
+              )}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                 {att.name}
               </span>
               <button
                 onClick={() => setAttachments(p => p.filter(a => a.id !== att.id))}
-                style={{ background: 'none', border: 'none', color: color.textSub, display: 'flex', padding: 2 }}
+                style={{ background: 'none', border: 'none', color: color.textSub, display: 'flex', padding: 2, flexShrink: 0 }}
               >
                 <X size={10} />
               </button>
@@ -121,7 +143,7 @@ export function ChatInput() {
           <Paperclip size={18} strokeWidth={1.5} />
         </button>
         <input ref={fileRef} type="file" multiple style={{ display: 'none' }} onChange={handleFile}
-          accept="image/*,.pdf,.txt,.md,.json,.csv" />
+          accept="image/*,.pdf,.txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.sh,.py" />
 
         {/* Textarea */}
         <textarea

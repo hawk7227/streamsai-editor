@@ -10,9 +10,31 @@ export const ModelIdSchema = z.enum([
 
 export const MessageRoleSchema = z.enum(['user', 'assistant', 'system'])
 
+// Text-only content part
+const TextPartSchema = z.object({
+  type: z.literal('text'),
+  text: z.string().min(1).max(100_000),
+})
+
+// Image content part (base64)
+const ImagePartSchema = z.object({
+  type: z.literal('image'),
+  source: z.object({
+    type: z.literal('base64'),
+    media_type: z.string(),
+    data: z.string(),
+  }),
+})
+
+// Content can be plain string OR array of parts
+const MessageContentSchema = z.union([
+  z.string().min(1).max(100_000),
+  z.array(z.union([TextPartSchema, ImagePartSchema])).min(1).max(20),
+])
+
 export const ChatMessageSchema = z.object({
   role: MessageRoleSchema,
-  content: z.string().min(1).max(100_000),
+  content: MessageContentSchema,
 })
 
 export const StreamRequestSchema = z.object({
