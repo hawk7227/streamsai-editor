@@ -455,14 +455,8 @@ export default function EditorPro() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100dvh", width: "100vw", background: "#050607", color: "#e5e7eb", fontFamily: "system-ui,-apple-system,sans-serif", overflow: "hidden" }}>
 
-      {/* ── TOP BAR ── */}
-      <header style={{ flexShrink: 0, height: 44, background: "#09090b", borderBottom: "1px solid #18181b", display: "flex", alignItems: "center", gap: 6, padding: "0 10px", overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <div style={{ width: 26, height: 26, borderRadius: 6, background: "linear-gradient(135deg,#2dd4a0,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 12, color: "#000" }}>E</div>
-          <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "-0.02em" }}>Editor<span style={{ color: "#2dd4a0" }}>Pro</span></span>
-        </div>
-        <VSep />
-
+      {/* ── TOP BAR ROW 1: Device + Browser chips ── */}
+      <div style={{ flexShrink: 0, height: 36, background: "#09090b", borderBottom: "1px solid #18181b", display: "flex", alignItems: "center", gap: 6, padding: "0 10px", overflow: "hidden" }}>
         {/* Device */}
         <div style={{ display: "flex", gap: 2, overflow: "hidden", flexShrink: 0 }}>
           {Object.entries(DEVS).map(([k, v]) => (
@@ -470,13 +464,21 @@ export default function EditorPro() {
           ))}
         </div>
         <VSep />
-
         {/* Browser */}
         <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
           {browsersFor(dev).map(k => (
             <Chip key={k} active={k === bid} onClick={() => setBid(k)}>{BROWS[k].n}</Chip>
           ))}
         </div>
+      </div>
+
+      {/* ── TOP BAR ROW 2: Logo + Controls ── */}
+      <header style={{ flexShrink: 0, height: 44, background: "#09090b", borderBottom: "1px solid #18181b", display: "flex", alignItems: "center", gap: 6, padding: "0 10px", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 6, background: "linear-gradient(135deg,#2dd4a0,#0d9488)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 12, color: "#000" }}>E</div>
+          <span style={{ fontWeight: 700, fontSize: 13, letterSpacing: "-0.02em" }}>Editor<span style={{ color: "#2dd4a0" }}>Pro</span></span>
+        </div>
+        <VSep />
 
         <div style={{ flex: 1 }} />
 
