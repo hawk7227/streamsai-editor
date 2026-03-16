@@ -191,7 +191,7 @@ const [previewUrl, setPreviewUrl] = useState(() => {
         width: actualLeft, flexShrink: 0, overflow: "hidden",
         transition: isDragging ? "none" : "width 180ms cubic-bezier(.4,0,.2,1)",
       }}>
-        <PanelShell title="Chat" onCollapse={() => setLeftOpen(false)} isCollapsed={false}>
+        <PanelShell title="Chat" onCollapse={() => setLeftOpen(false)}>
           <iframe
             src={MOBILE_CHAT_URL}
             style={{ width: "100%", height: "100%", border: "none", display: "block" }}
@@ -280,7 +280,7 @@ const [previewUrl, setPreviewUrl] = useState(() => {
               <TabChip label="Quality Gate" active={rightView === "quality"} onClick={() => setRightView("quality")} />
             </div>
           }
-          isCollapsed={false}
+         
         >
           {rightView === "editor" ? (
             <iframe
