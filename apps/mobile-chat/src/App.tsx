@@ -17,7 +17,7 @@ export default function App() {
     const handler = (e: MessageEvent) => {
       if (!e.data || typeof e.data !== 'object') return
       if (e.data.type === 'streamsai:new-chat') {
-        useChatStore.getState().createThread().then(id => {
+        useChatStore.getState().createThread().then((id: string) => {
           useChatStore.getState().selectThread(id)
         })
       }

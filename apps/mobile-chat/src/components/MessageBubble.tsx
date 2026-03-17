@@ -87,28 +87,28 @@ function AssistantContent({ content, isStreaming, isLast }: {
     <div style={{ fontSize: font.size.base, lineHeight: String(1.75), color: '#e8eaf0' }}>
       <ReactMarkdown
         components={{
-          code({ className, children }) {
+          code({ className, children }: { className?: string; children?: React.ReactNode }) {
             const match = /language-(\w+)/.exec(className ?? '')
             const code = String(children).replace(/\n$/, '')
             return match
               ? <CodeBlock language={match[1]} code={code} />
               : <InlineCode>{code}</InlineCode>
           },
-          p({ children }) {
+          p({ children }: { children?: React.ReactNode }) {
             return <p style={{
               margin: 0, marginBottom: '0.9em',
               lineHeight: '1.75',
               color: '#dde1ec',
             }}>{children}</p>
           },
-          ul({ children }) {
+          ul({ children }: { children?: React.ReactNode }) {
             return <ul style={{
               margin: '0.4em 0 0.9em',
               paddingLeft: '1.4em',
               display: 'flex', flexDirection: 'column', gap: '0.3em',
             }}>{children}</ul>
           },
-          ol({ children }) {
+          ol({ children }: { children?: React.ReactNode }) {
             return <ol style={{
               margin: '0.4em 0 0.9em',
               paddingLeft: '0',
@@ -116,9 +116,8 @@ function AssistantContent({ content, isStreaming, isLast }: {
               display: 'flex', flexDirection: 'column', gap: '0.5em',
             }}>{children}</ol>
           },
-          li({ children, ...props }) {
-            // Check if inside ol by checking node index
-            const isOrdered = (props as { ordered?: boolean }).ordered
+          li({ children, ordered }: { children?: React.ReactNode; ordered?: boolean }) {
+            const isOrdered = ordered
             if (isOrdered) {
               return (
                 <li style={{ display: 'flex', gap: '0.75em', alignItems: 'flex-start', lineHeight: '1.65' }}>
@@ -148,7 +147,7 @@ function AssistantContent({ content, isStreaming, isLast }: {
               </li>
             )
           },
-          blockquote({ children }) {
+          blockquote({ children }: { children?: React.ReactNode }) {
             return (
               <blockquote style={{
                 margin: '0.5em 0',
@@ -159,7 +158,7 @@ function AssistantContent({ content, isStreaming, isLast }: {
               }}>{children}</blockquote>
             )
           },
-          h1({ children }) {
+          h1({ children }: { children?: React.ReactNode }) {
             return <h1 style={{
               fontSize: '1.3em', fontWeight: 700,
               margin: '0.8em 0 0.4em',
@@ -168,31 +167,31 @@ function AssistantContent({ content, isStreaming, isLast }: {
               paddingBottom: '0.3em',
             }}>{children}</h1>
           },
-          h2({ children }) {
+          h2({ children }: { children?: React.ReactNode }) {
             return <h2 style={{
               fontSize: '1.1em', fontWeight: 600,
               margin: '0.7em 0 0.35em',
               color: '#e8eaf8',
             }}>{children}</h2>
           },
-          h3({ children }) {
+          h3({ children }: { children?: React.ReactNode }) {
             return <h3 style={{
               fontSize: '1em', fontWeight: 600,
               margin: '0.6em 0 0.3em',
               color: '#d8daf0',
             }}>{children}</h3>
           },
-          strong({ children }) {
+          strong({ children }: { children?: React.ReactNode }) {
             return <strong style={{
               fontWeight: 700,
               color: '#c8f0e8',
               letterSpacing: '0.01em',
             }}>{children}</strong>
           },
-          em({ children }) {
+          em({ children }: { children?: React.ReactNode }) {
             return <em style={{ color: 'rgba(255,255,255,0.75)', fontStyle: 'italic' }}>{children}</em>
           },
-          a({ href, children }) {
+          a({ href, children }: { href?: string; children?: React.ReactNode }) {
             return <a href={href} target="_blank" rel="noopener noreferrer" style={{
               color: '#6eecd8',
               textDecoration: 'underline',

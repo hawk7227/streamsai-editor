@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import type { Message, ModelId } from '@/types'
+import type { ModelId } from '@/types'
 
 // API base — proxy URL injected at build time, falls back to same-origin
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -10,8 +10,10 @@ export interface StreamCallbacks {
   onError: (err: Error) => void
 }
 
+type ApiMessage = { role: 'user' | 'assistant' | 'system'; content: string | unknown[] }
+
 export function streamCompletion(
-  messages: Pick<Message, 'role'> & { content: string | unknown[] }[],
+  messages: ApiMessage[],
   model: ModelId,
   threadId: string,
   callbacks: StreamCallbacks,
@@ -21,7 +23,7 @@ export function streamCompletion(
 }
 
 async function _stream(
-  messages: Pick<Message, 'role'> & { content: string | unknown[] }[],
+  messages: ApiMessage[],
   model: ModelId,
   threadId: string,
   { onToken, onDone, onError }: StreamCallbacks,

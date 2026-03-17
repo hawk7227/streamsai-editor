@@ -2,7 +2,7 @@ import { useRef, useCallback } from 'react'
 import { useChatStore } from '@/store/chat'
 import { streamCompletion, generateThreadTitle } from '@/lib/streaming'
 import { postPreviewCandidate } from '@/lib/preview'
-import type { Attachment, Message } from '@/types'
+import type { Attachment, Message, Thread } from '@/types'
 
 const STUDIO_SYSTEM_USER = `You are StreamsAI Studio Assistant — an AI builder running inside StreamsAI Studio.
 
@@ -99,7 +99,7 @@ export function useSendMessage() {
       .filter((m: Message) => m.status === 'done' && m.id !== placeholder.id && m.content.trim().length > 0)
       .map((m: Message) => ({ role: m.role, content: m.content.trim() }))
 
-    const thread = threads.find(t => t.id === activeThreadId)
+    const thread = threads.find((t: Thread) => t.id === activeThreadId)
     const model = thread?.model ?? 'claude-sonnet-4-5'
     const isFirstExchange = history.filter((m: { role: string }) => m.role === 'user').length === 1
 

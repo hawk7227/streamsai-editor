@@ -4,7 +4,6 @@ import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { color, spacing, font, motion, radius } from '@/lib/tokens'
 import { AlignLeft, Pencil, Zap } from 'lucide-react'
-import { MODELS } from '@/types'
 
 export function ChatPane() {
   const { activeThreadId, threads, loadMessages, setSidebarOpen, sidebarOpen, createThread, selectThread } = useChatStore()
