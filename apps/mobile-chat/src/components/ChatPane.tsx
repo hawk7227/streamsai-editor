@@ -3,11 +3,11 @@ import { useChatStore } from '@/store/chat'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { color, spacing, font, motion, radius } from '@/lib/tokens'
-import { AlignLeft, Pencil, Zap } from 'lucide-react'
+import { AlignLeft, Zap } from 'lucide-react'
 
 export function ChatPane() {
   const { activeThreadId, threads, loadMessages, setSidebarOpen, sidebarOpen, createThread, selectThread } = useChatStore()
-  const thread = threads.find(t => t.id === activeThreadId)
+  const thread = threads.find((t: { id: string }) => t.id === activeThreadId)
 
   useEffect(() => {
     if (activeThreadId) loadMessages(activeThreadId)
@@ -25,58 +25,47 @@ export function ChatPane() {
       display: 'flex', flexDirection: 'column',
       height: '100%', width: '100%',
       background: color.bg,
+      position: 'relative',
     }}>
-      {/* Header */}
+      {/* Floating top bar — minimal, overlaid, not a full header */}
       <div style={{
-        flexShrink: 0,
-        background: color.bgElevated,
-        borderBottom: `1px solid ${color.border}`,
+        position: 'absolute', top: 0, left: 0, right: 0,
+        zIndex: 10,
+        display: 'flex', alignItems: 'center',
+        padding: '8px 12px 8px 6px',
+        background: `linear-gradient(to bottom, ${color.bg} 60%, transparent)`,
+        pointerEvents: 'none',
       }}>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          style={{
+            width: 32, height: 32, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            color: 'rgba(255,255,255,0.35)',
+            borderRadius: radius.md,
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+            transition: `color ${motion.snap} ${motion.easing}`,
+          }}
+        >
+          <AlignLeft size={15} strokeWidth={1.8} />
+        </button>
         <div style={{
-          display: 'flex', alignItems: 'center',
-          height: 36,
-          paddingLeft: spacing[2],
-          paddingRight: spacing[3],
-          gap: spacing[2],
+          flex: 1, minWidth: 0, paddingLeft: 10,
+          fontSize: 12, color: 'rgba(255,255,255,0.25)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontWeight: 500, letterSpacing: '0.01em',
         }}>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            style={{
-              width: 32, height: 32, flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)',
-              borderRadius: radius.sm,
-            }}
-          >
-            <AlignLeft size={16} strokeWidth={2} />
-          </button>
-          <div style={{
-            flex: 1, minWidth: 0,
-            fontSize: font.size.sm, fontWeight: font.weight.medium,
-            color: 'rgba(255,255,255,0.7)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {thread.title}
-          </div>
-          <button
-            onClick={() => {
-              const title = window.prompt('Rename conversation:', thread.title)
-              if (title?.trim()) useChatStore.getState().updateThread(thread.id, { title: title.trim() })
-            }}
-            style={{
-              width: 28, height: 28, flexShrink: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)',
-              borderRadius: radius.sm,
-            }}
-          >
-            <Pencil size={13} strokeWidth={1.5} />
-          </button>
+          {thread.title === 'New conversation' ? '' : thread.title}
         </div>
       </div>
 
-      {/* Messages */}
-      <MessageList threadId={activeThreadId} />
+      {/* Messages — with top padding so content clears the overlay */}
+      <div style={{ flex: 1, minHeight: 0, paddingTop: 40 }}>
+        <MessageList threadId={activeThreadId} />
+      </div>
 
       {/* Input */}
       <ChatInput />
@@ -86,31 +75,23 @@ export function ChatPane() {
 
 function EmptyState({ onNew, onToggle }: { onNew: () => void; onToggle: () => void }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: color.bg }}>
-      {/* Header */}
-      <div style={{
-        flexShrink: 0,
-        background: color.bgElevated,
-        borderBottom: `1px solid ${color.border}`,
-      }}>
-        <div style={{
-          display: 'flex', alignItems: 'center',
-          height: 36, paddingLeft: spacing[2],
-        }}>
-          <button
-            onClick={onToggle}
-            style={{
-              width: 32, height: 32,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)',
-            }}
-          >
-            <AlignLeft size={16} strokeWidth={2} />
-          </button>
-          <span style={{ fontSize: font.size.sm, fontWeight: font.weight.medium, color: 'rgba(255,255,255,0.6)', marginLeft: spacing[2] }}>
-            StreamsAI
-          </span>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: color.bg, position: 'relative' }}>
+
+      {/* Minimal floating toggle */}
+      <div style={{ position: 'absolute', top: 8, left: 6, zIndex: 10 }}>
+        <button
+          onClick={onToggle}
+          style={{
+            width: 32, height: 32,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            color: 'rgba(255,255,255,0.35)',
+            borderRadius: radius.md, cursor: 'pointer',
+          }}
+        >
+          <AlignLeft size={15} strokeWidth={1.8} />
+        </button>
       </div>
 
       {/* Body */}
@@ -119,41 +100,38 @@ function EmptyState({ onNew, onToggle }: { onNew: () => void; onToggle: () => vo
         alignItems: 'center', justifyContent: 'center',
         padding: spacing[8], gap: spacing[6],
       }}>
-        {/* Logo */}
         <div style={{
-          width: 72, height: 72, borderRadius: 20,
+          width: 64, height: 64, borderRadius: 18,
           background: `linear-gradient(135deg, ${color.accent}, #16a34a)`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: `0 0 40px ${color.accentGlow}`,
         }}>
-          <Zap size={32} color="#fff" strokeWidth={2.5} />
+          <Zap size={28} color="#fff" strokeWidth={2.5} />
         </div>
 
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: font.size.xl, fontWeight: font.weight.bold, color: color.text, marginBottom: spacing[2] }}>
-            StreamsAI Chat
+            StreamsAI
           </div>
           <div style={{ fontSize: font.size.base, color: color.textSub, lineHeight: 1.5, maxWidth: 240 }}>
-            Multi-model AI. Claude, GPT-4o. Conversations stored on your device.
+            Builder assistant with live preview
           </div>
         </div>
 
         <button
           onClick={onNew}
           style={{
-            padding: `${spacing[4]} ${spacing[8]}`,
+            padding: `${spacing[3]} ${spacing[8]}`,
             background: color.accent,
             color: '#fff', border: 'none',
             borderRadius: radius.full,
-            fontSize: font.size.md, fontWeight: font.weight.semibold,
+            fontSize: font.size.base, fontWeight: font.weight.semibold,
             boxShadow: `0 4px 20px ${color.accentGlow}`,
-            transition: `transform ${motion.snap} ${motion.easing}, box-shadow ${motion.snap} ${motion.easing}`,
-            minWidth: 200,
+            transition: `transform ${motion.snap} ${motion.easing}`,
+            minWidth: 180, cursor: 'pointer',
           }}
-          onTouchStart={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.96)' }}
-          onTouchEnd={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)' }}
         >
-          New Conversation
+          New conversation
         </button>
       </div>
     </div>

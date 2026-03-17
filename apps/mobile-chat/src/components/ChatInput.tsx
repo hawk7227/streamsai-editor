@@ -128,6 +128,7 @@ export function ChatInput() {
         border: `1px solid ${color.border}`,
         padding: `${spacing[2]} ${spacing[2]} ${spacing[2]} ${spacing[3]}`,
         minHeight: 48,
+        position: 'relative',
       }}>
         {/* Attach button */}
         <button
@@ -144,6 +145,58 @@ export function ChatInput() {
         </button>
         <input ref={fileRef} type="file" multiple style={{ display: 'none' }} onChange={handleFile}
           accept="image/*,.pdf,.txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.sh,.py" />
+
+        {/* Model pill — inside input bar, left of textarea */}
+        <div style={{ position: 'relative', flexShrink: 0, marginBottom: 2 }}>
+          <button
+            onClick={() => setModelOpen(o => !o)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 3,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              color: 'rgba(255,255,255,0.35)', fontSize: 11,
+              padding: '3px 7px', borderRadius: radius.full, cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: color.accent, display: 'inline-block', flexShrink: 0 }} />
+            {thread ? (MODELS[thread.model]?.label ?? thread.model) : 'Model'}
+            <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)' }}>▾</span>
+          </button>
+          {/* Model picker */}
+          {modelOpen && (
+            <div style={{
+              position: 'absolute', bottom: '100%', left: 0, marginBottom: spacing[2],
+              background: color.bgCard, border: `1px solid ${color.border}`,
+              borderRadius: radius.md, overflow: 'hidden', zIndex: 100,
+              boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
+              minWidth: 200,
+              animation: `slideUp 150ms ${motion.easing}`,
+            }}>
+              {Object.values(MODELS).map(m => (
+                <button
+                  key={m.id}
+                  onClick={async () => {
+                    setModelOpen(false)
+                    if (activeThreadId) await updateThread(activeThreadId, { model: m.id as ModelId })
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    width: '100%', padding: `${spacing[3]} ${spacing[4]}`,
+                    background: thread?.model === m.id ? color.accentDim : 'none',
+                    border: 'none', cursor: 'pointer',
+                    color: thread?.model === m.id ? color.accent : color.text,
+                    fontSize: font.size.sm, textAlign: 'left',
+                    borderBottom: `1px solid ${color.border}`,
+                  }}
+                >
+                  <span>{m.label}</span>
+                  <span style={{ fontSize: font.size.xs, color: color.textSub }}>{m.provider}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Textarea */}
         <textarea
@@ -195,57 +248,6 @@ export function ChatInput() {
           >
             <ArrowUp size={18} color={canSend ? '#fff' : color.textFaint} strokeWidth={2.5} />
           </button>
-        )}
-      </div>
-
-      {/* Model pill */}
-      <div style={{ marginTop: spacing[2], position: 'relative', display: 'flex' }}>
-        <button
-          onClick={() => setModelOpen(o => !o)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            background: 'none', border: 'none',
-            color: color.textSub, fontSize: font.size.xs,
-            padding: '2px 6px', borderRadius: radius.full,
-          }}
-        >
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: color.accent, display: 'inline-block' }} />
-          {thread ? (MODELS[thread.model]?.label ?? thread.model) : 'Model'}
-          <span style={{ fontSize: 9, color: color.textFaint }}>▾</span>
-        </button>
-
-        {/* Model picker */}
-        {modelOpen && (
-          <div style={{
-            position: 'absolute', bottom: '100%', left: 0, marginBottom: spacing[2],
-            background: color.bgCard, border: `1px solid ${color.border}`,
-            borderRadius: radius.md, overflow: 'hidden', zIndex: 100,
-            boxShadow: '0 -8px 30px rgba(0,0,0,0.5)',
-            minWidth: 200,
-            animation: `slideUp 150ms ${motion.easing}`,
-          }}>
-            {Object.values(MODELS).map(m => (
-              <button
-                key={m.id}
-                onClick={async () => {
-                  setModelOpen(false)
-                  if (activeThreadId) await updateThread(activeThreadId, { model: m.id as ModelId })
-                }}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  width: '100%', padding: `${spacing[3]} ${spacing[4]}`,
-                  background: thread?.model === m.id ? color.accentDim : 'none',
-                  border: 'none', cursor: 'pointer',
-                  color: thread?.model === m.id ? color.accent : color.text,
-                  fontSize: font.size.sm, textAlign: 'left',
-                  borderBottom: `1px solid ${color.border}`,
-                }}
-              >
-                <span>{m.label}</span>
-                <span style={{ fontSize: font.size.xs, color: color.textSub }}>{m.provider}</span>
-              </button>
-            ))}
-          </div>
         )}
       </div>
     </div>
