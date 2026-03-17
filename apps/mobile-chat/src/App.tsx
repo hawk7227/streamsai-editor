@@ -12,6 +12,17 @@ export default function App() {
     loadSettings().then(() => loadThreads())
   }, [loadSettings, loadThreads])
 
+  // Post thread list to Studio (parent) whenever threads change
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.parent === window) return
+    window.parent.postMessage({
+      type: 'streamsai:thread-list',
+      threads: threads.map((t: { id: string; title: string; model: string; updatedAt: number }) => ({
+        id: t.id, title: t.title, model: t.model, updatedAt: t.updatedAt,
+      })),
+    }, '*')
+  }, [threads])
+
   // Listen for Studio commands via postMessage
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -20,6 +31,9 @@ export default function App() {
         useChatStore.getState().createThread().then((id: string) => {
           useChatStore.getState().selectThread(id)
         })
+      }
+      if (e.data.type === 'streamsai:select-thread' && typeof e.data.id === 'string') {
+        useChatStore.getState().selectThread(e.data.id)
       }
     }
     window.addEventListener('message', handler)

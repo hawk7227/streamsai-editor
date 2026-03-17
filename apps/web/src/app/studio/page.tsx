@@ -45,9 +45,15 @@ export default function StudioPage() {
   const [staged, setStaged] = useState<StagedChange[]>(() => loadStagedChanges())
   const dragState = useRef<{ handle: 'left-right' | 'center-right'; startX: number; startLeft: number; startCenter: number } | null>(null)
   const chatIframeRef = useRef<HTMLIFrameElement>(null)
+  const [threadList, setThreadList] = useState<{ id: string; title: string; model: string; updatedAt: number }[]>([])
 
   const handleNewChat = useCallback(() => {
     chatIframeRef.current?.contentWindow?.postMessage({ type: 'streamsai:new-chat' }, '*')
+    setActiveTool(null)
+  }, [])
+
+  const handleThreadSelect = useCallback((id: string) => {
+    chatIframeRef.current?.contentWindow?.postMessage({ type: 'streamsai:select-thread', id }, '*')
     setActiveTool(null)
   }, [])
 
@@ -112,6 +118,9 @@ export default function StudioPage() {
     const onMessage = (event: MessageEvent) => {
       const data = event.data
       if (!data || typeof data !== 'object') return
+      if (data.type === 'streamsai:thread-list' && Array.isArray(data.threads)) {
+        setThreadList(data.threads)
+      }
       if (data.type === 'streamsai:preview-html' && typeof data.html === 'string') {
         setPreview({ mode: 'html', html: data.html, title: data.title })
       }
@@ -181,6 +190,8 @@ export default function StudioPage() {
         onSelectFile={(path) => void openFile(path)}
         onUpload={onUpload}
         onNewChat={handleNewChat}
+        threadList={threadList}
+        onThreadSelect={handleThreadSelect}
       />
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
         <CompactContextBar project={project} previewMode={preview.mode === 'route' ? preview.route : preview.mode} deviceLabel={device === 'iphone' ? 'iPhone 14 Pro Max' : 'Desktop'} />

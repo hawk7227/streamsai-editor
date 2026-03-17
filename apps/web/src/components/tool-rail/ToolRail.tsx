@@ -13,6 +13,8 @@ type Props = {
   onSelectFile(path: string): void
   onUpload(file: File): void
   onNewChat?(): void
+  threadList?: { id: string; title: string; model: string; updatedAt: number }[]
+  onThreadSelect?(id: string): void
 }
 
 type ToolDef = { key: ToolKey; icon: string; label: string; action?: boolean; dividerAfter?: boolean }
@@ -33,27 +35,14 @@ const tools: ToolDef[] = [
 ]
 
 // Mock recent chats — will be replaced with real data from chat store
-const RECENT_CHATS = [
-  'Build landing page',
-  'Fix auth flow',
-  'Review patient panel',
-  'Dropshipping pipeline',
-  'Doctor panel STREAMS',
-]
-
 export function ToolRail(props: Props) {
-  const { expanded, onToggle, activeTool, onTool, files, currentFile, onSelectFile, onUpload, onNewChat } = props
+  const { expanded, onToggle, activeTool, onTool, files, currentFile, onSelectFile, onUpload, onNewChat, threadList = [], onThreadSelect } = props
   const [search, setSearch] = useState('')
   const [chatSearch, setChatSearch] = useState('')
 
   const filteredFiles = useMemo(
     () => files.filter(f => f.toLowerCase().includes(search.toLowerCase())).slice(0, 200),
     [files, search]
-  )
-
-  const filteredChats = useMemo(
-    () => RECENT_CHATS.filter(c => c.toLowerCase().includes(chatSearch.toLowerCase())),
-    [chatSearch]
   )
 
   const handleTool = (tool: ToolDef) => {
@@ -126,7 +115,7 @@ export function ToolRail(props: Props) {
           )
         })}
 
-        {/* Recent chats section — only when expanded and no tool active or search active */}
+        {/* Real thread list */}
         {expanded && (activeTool === 'search' || activeTool === null) && (
           <div style={{ padding: '8px 12px', marginTop: 4 }}>
             {activeTool === 'search' && (
@@ -141,11 +130,18 @@ export function ToolRail(props: Props) {
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '8px 2px 6px', fontWeight: 600 }}>
               Your chats
             </div>
-            {filteredChats.map(chat => (
-              <button key={chat} style={chatButtonStyle}>
-                {chat}
-              </button>
-            ))}
+            {threadList.length === 0 && (
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', padding: '4px 2px' }}>No conversations yet</div>
+            )}
+            {threadList
+              .filter(t => !chatSearch || t.title.toLowerCase().includes(chatSearch.toLowerCase()))
+              .slice(0, 20)
+              .map(thread => (
+                <button key={thread.id} onClick={() => onThreadSelect?.(thread.id)} style={chatButtonStyle}>
+                  {thread.title}
+                </button>
+              ))
+            }
           </div>
         )}
 
