@@ -1,7 +1,62 @@
 "use client"
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 export type ToolKey = 'new-chat' | 'search' | 'images' | 'apps' | 'research' | 'codex' | 'models' | 'projects' | 'files' | 'uploads' | 'artifacts' | 'settings'
+
+function AppsPanel() {
+  const [github, setGithub] = useState<{ connected: boolean; error?: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/github/status')
+      .then(r => r.json())
+      .then((d: { connected: boolean; error?: string }) => setGithub(d))
+      .catch(() => setGithub({ connected: false, error: 'Request failed' }))
+  }, [])
+
+  const StatusDot = ({ ok }: { ok: boolean | null }) => (
+    <span style={{
+      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+      background: ok === null ? 'rgba(255,255,255,0.2)' : ok ? '#22c55e' : '#ef4444',
+      display: 'inline-block',
+      boxShadow: ok ? '0 0 6px rgba(34,197,94,0.5)' : 'none',
+    }} />
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Connections</div>
+      {/* GitHub */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
+        <StatusDot ok={github === null ? null : github.connected} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, color: github?.connected ? '#6eecd8' : 'rgba(255,255,255,0.55)', fontWeight: 500 }}>GitHub App</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>
+            {github === null ? 'Checking…' : github.connected ? 'Connected — App ID 3107963' : github.error ?? 'Not connected'}
+          </div>
+        </div>
+      </div>
+      {/* Supabase */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
+        <StatusDot ok={false} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontWeight: 500 }}>Supabase</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>Not configured</div>
+        </div>
+      </div>
+      {/* Vercel */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
+        <StatusDot ok={false} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontWeight: 500 }}>Vercel</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>Not configured</div>
+        </div>
+      </div>
+      <a href="/setup" style={{ display: 'block', padding: '8px 12px', borderRadius: 8, background: 'rgba(68,195,166,0.1)', border: '1px solid rgba(68,195,166,0.2)', color: '#6eecd8', fontSize: 12, textDecoration: 'none', textAlign: 'center', marginTop: 4 }}>
+        Manage connections →
+      </a>
+    </div>
+  )
+}
 
 type Props = {
   expanded: boolean
@@ -209,12 +264,7 @@ export function ToolRail(props: Props) {
         )}
 
         {/* Apps panel */}
-        {expanded && activeTool === 'apps' && (
-          <div style={panelStyle}>
-            <div style={comingSoonStyle}>GitHub, Supabase, and Vercel integrations.</div>
-            <a href="/setup" style={linkButtonStyle}>Open Setup →</a>
-          </div>
-        )}
+        {expanded && activeTool === 'apps' && <AppsPanel />}
 
         {/* Research panel */}
         {expanded && activeTool === 'research' && (
