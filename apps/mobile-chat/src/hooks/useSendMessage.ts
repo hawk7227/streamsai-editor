@@ -41,7 +41,12 @@ function buildMessageContent(content: string, attachments: Attachment[]): string
   if (textAttachments.length > 0) {
     const fileTexts = textAttachments.map(a => {
       try {
-        const text = atob(a.dataUrl.split(',')[1] ?? '')
+        let text: string
+        if (a.dataUrl.startsWith('data:text/plain;charset=utf-8,')) {
+          text = decodeURIComponent(a.dataUrl.slice('data:text/plain;charset=utf-8,'.length))
+        } else {
+          text = atob(a.dataUrl.split(',')[1] ?? '')
+        }
         return `\n\n[File: ${a.name}]\n\`\`\`\n${text.slice(0, 8000)}\n\`\`\``
       } catch {
         return `\n\n[File: ${a.name} — could not decode]`

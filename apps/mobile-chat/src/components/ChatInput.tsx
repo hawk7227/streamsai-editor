@@ -49,23 +49,45 @@ export function ChatInput() {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
     setUploading(true)
-    try {
-      const loaded = await Promise.all(
-        files.map(f => new Promise<Attachment>((res, rej) => {
-          const reader = new FileReader()
-          reader.onload = ev => res({
-            id: nanoid(), name: f.name, type: f.type, size: f.size,
-            dataUrl: ev.target?.result as string,
+
+    const MAX_TEXT_BYTES = 500_000
+    const MAX_IMAGE_BYTES = 5_000_000
+    const results: Attachment[] = []
+
+    for (const f of files) {
+      try {
+        const isImage = f.type.startsWith('image/')
+        const isText = f.type.startsWith('text/') ||
+          /\.(ts|tsx|js|jsx|html|css|json|md|txt|csv|xml|yaml|yml|sh|py)$/i.test(f.name)
+
+        if (isImage) {
+          if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} too large (max 5MB)`); continue }
+          const dataUrl = await new Promise<string>((res, rej) => {
+            const reader = new FileReader()
+            reader.onload = ev => res(ev.target?.result as string)
+            reader.onerror = rej
+            reader.readAsDataURL(f)
           })
-          reader.onerror = rej
-          reader.readAsDataURL(f)
-        }))
-      )
-      setAttachments(prev => [...prev, ...loaded])
-    } finally {
-      setUploading(false)
-      e.target.value = ''
+          results.push({ id: nanoid(), name: f.name, type: f.type, size: f.size, dataUrl })
+
+        } else if (isText) {
+          let text = await f.text()
+          if (text.length > MAX_TEXT_BYTES) {
+            text = text.slice(0, MAX_TEXT_BYTES) + `\n\n[Truncated — ${f.size.toLocaleString()} bytes total]`
+          }
+          const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`
+          results.push({ id: nanoid(), name: f.name, type: f.type || 'text/plain', size: f.size, dataUrl })
+
+        } else {
+          results.push({ id: nanoid(), name: f.name, type: f.type, size: f.size,
+            dataUrl: `data:text/plain,Cannot read binary: ${f.name}` })
+        }
+      } catch { /* skip failed file */ }
     }
+
+    if (results.length > 0) setAttachments(prev => [...prev, ...results])
+    setUploading(false)
+    e.target.value = ''
   }, [])
 
   if (!activeThreadId) return null
