@@ -63,7 +63,7 @@ export function ChatPane() {
       </div>
 
       {/* Messages — with top padding so content clears the overlay */}
-      <div style={{ flex: 1, minHeight: 0, paddingTop: 40 }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', paddingTop: 40, display: 'flex', flexDirection: 'column' }}>
         <MessageList threadId={activeThreadId} />
       </div>
 
