@@ -35,6 +35,12 @@ export default function App() {
       if (e.data.type === 'streamsai:select-thread' && typeof e.data.id === 'string') {
         useChatStore.getState().selectThread(e.data.id)
       }
+      if (e.data.type === 'streamsai:set-model' && typeof e.data.model === 'string') {
+        const { activeThreadId, updateThread } = useChatStore.getState()
+        if (activeThreadId) {
+          updateThread(activeThreadId, { model: e.data.model as import('@/types').ModelId })
+        }
+      }
     }
     window.addEventListener('message', handler)
     return () => window.removeEventListener('message', handler)

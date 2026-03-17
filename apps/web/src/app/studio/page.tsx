@@ -57,6 +57,21 @@ export default function StudioPage() {
     setActiveTool(null)
   }, [])
 
+  const handleModelSelect = useCallback((model: string) => {
+    chatIframeRef.current?.contentWindow?.postMessage({ type: 'streamsai:set-model', model }, '*')
+    setActiveTool(null)
+  }, [])
+
+  const handleProjectSelect = useCallback(async (p: { name: string; owner: string; repo: string; branch: string }) => {
+    const next = { ...project, name: p.name, owner: p.owner, repo: p.repo, branch: p.branch, currentFile: 'README.md' }
+    setProject(next)
+    setActiveTool(null)
+    // Reload file tree for new project
+    const res = await fetch(`/api/projects/files?owner=${encodeURIComponent(p.owner)}&repo=${encodeURIComponent(p.repo)}&branch=${encodeURIComponent(p.branch)}`)
+    const json = await res.json() as { files?: string[] }
+    if (json.files) setFiles(json.files)
+  }, [project])
+
   useEffect(() => save('studio:leftW', leftW), [leftW])
   useEffect(() => save('studio:centerW', centerW), [centerW])
   useEffect(() => save('studio:leftOpen', leftOpen), [leftOpen])
@@ -192,6 +207,9 @@ export default function StudioPage() {
         onNewChat={handleNewChat}
         threadList={threadList}
         onThreadSelect={handleThreadSelect}
+        onModelSelect={handleModelSelect}
+        onProjectSelect={handleProjectSelect}
+        activeProjectName={project.name}
       />
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%', minWidth: 0 }}>
         <CompactContextBar project={project} previewMode={preview.mode === 'route' ? preview.route : preview.mode} deviceLabel={device === 'iphone' ? 'iPhone 14 Pro Max' : 'Desktop'} />

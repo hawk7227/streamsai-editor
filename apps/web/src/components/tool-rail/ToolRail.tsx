@@ -15,6 +15,10 @@ type Props = {
   onNewChat?(): void
   threadList?: { id: string; title: string; model: string; updatedAt: number }[]
   onThreadSelect?(id: string): void
+  onModelSelect?(model: string): void
+  onProjectSelect?(project: { name: string; owner: string; repo: string; branch: string }): void
+  activeModel?: string
+  activeProjectName?: string
 }
 
 type ToolDef = { key: ToolKey; icon: string; label: string; action?: boolean; dividerAfter?: boolean }
@@ -36,7 +40,7 @@ const tools: ToolDef[] = [
 
 // Mock recent chats — will be replaced with real data from chat store
 export function ToolRail(props: Props) {
-  const { expanded, onToggle, activeTool, onTool, files, currentFile, onSelectFile, onUpload, onNewChat, threadList = [], onThreadSelect } = props
+  const { expanded, onToggle, activeTool, onTool, files, currentFile, onSelectFile, onUpload, onNewChat, threadList = [], onThreadSelect, onModelSelect, onProjectSelect, activeModel, activeProjectName } = props
   const [search, setSearch] = useState('')
   const [chatSearch, setChatSearch] = useState('')
 
@@ -229,18 +233,63 @@ export function ToolRail(props: Props) {
         {/* Models panel */}
         {expanded && activeTool === 'models' && (
           <div style={panelStyle}>
-            {['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5', 'gpt-4o', 'gpt-4o-mini'].map(m => (
-              <button key={m} style={{ ...fileButtonStyle, color: '#c7d8f8' }}>{m}</button>
-            ))}
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Select Model</div>
+            {[
+              { id: 'claude-sonnet-4-5', label: 'Claude Sonnet', provider: 'Anthropic' },
+              { id: 'claude-opus-4-5',   label: 'Claude Opus',   provider: 'Anthropic' },
+              { id: 'claude-haiku-4-5',  label: 'Claude Haiku',  provider: 'Anthropic' },
+              { id: 'gpt-4o',            label: 'GPT-4o',        provider: 'OpenAI' },
+              { id: 'gpt-4o-mini',       label: 'GPT-4o mini',   provider: 'OpenAI' },
+            ].map(m => {
+              const isActive = activeModel === m.id
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => onModelSelect?.(m.id)}
+                  style={{
+                    ...fileButtonStyle,
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: isActive ? 'rgba(68,195,166,0.12)' : 'transparent',
+                    border: isActive ? '1px solid rgba(68,195,166,0.25)' : '1px solid transparent',
+                    borderRadius: 8, padding: '8px 10px',
+                    color: isActive ? '#6eecd8' : '#c7d8f8',
+                  }}
+                >
+                  <span>{m.label}</span>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{m.provider}</span>
+                </button>
+              )
+            })}
           </div>
         )}
 
-        {/* Projects panel */}
         {expanded && activeTool === 'projects' && (
           <div style={panelStyle}>
-            {['streamsai-editor', 'hipa-doctor-panel', 'patientpanel', 'dropshipping-management', 'file-engine-plateform'].map(p => (
-              <button key={p} style={{ ...fileButtonStyle, color: '#c7d8f8' }}>{p}</button>
-            ))}
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Switch Project</div>
+            {[
+              { name: 'streamsai-editor',       owner: 'hawk7227', repo: 'streamsai-editor',       branch: 'main' },
+              { name: 'hipa-doctor-panel',       owner: 'hawk7227', repo: 'hipa-doctor-panel',       branch: 'master' },
+              { name: 'patientpanel',            owner: 'hawk7227', repo: 'patientpanel',            branch: 'master' },
+              { name: 'dropshipping-management', owner: 'hawk7227', repo: 'dropshipping-management', branch: 'main' },
+              { name: 'file-engine-plateform',   owner: 'hawk7227', repo: 'file-engine-plateform',   branch: 'main' },
+            ].map(p => {
+              const isActive = activeProjectName === p.name
+              return (
+                <button
+                  key={p.name}
+                  onClick={() => onProjectSelect?.(p)}
+                  style={{
+                    ...fileButtonStyle,
+                    background: isActive ? 'rgba(68,195,166,0.12)' : 'transparent',
+                    border: isActive ? '1px solid rgba(68,195,166,0.25)' : '1px solid transparent',
+                    borderRadius: 8, padding: '8px 10px',
+                    color: isActive ? '#6eecd8' : '#c7d8f8',
+                  }}
+                >
+                  {p.name}
+                </button>
+              )
+            })}
           </div>
         )}
 
