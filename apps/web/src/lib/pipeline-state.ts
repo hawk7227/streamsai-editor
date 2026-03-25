@@ -69,7 +69,15 @@ export interface PipelineState {
   realism: RealismFields
   finalPrompt: string
   pipelinePrompt: string
+  // Guidance document — full content persisted so it survives refresh
   guidanceFileName: string | null
+  guidanceContent: string | null
+  guidanceRuleCount: number
+  guidanceSummary: string | null
+  // Conflict resolutions persisted per session
+  conflictResolutions: Record<string, 'frontend' | 'guidance'>
+  // Active job tracking
+  activeJobId: string | null
   steps: PipelineStep[]
   presets: PipelinePreset[]
   lastSaved: number | null
@@ -101,6 +109,11 @@ export const DEFAULT_STATE: PipelineState = {
   finalPrompt: '',
   pipelinePrompt: '',
   guidanceFileName: null,
+  guidanceContent: null,
+  guidanceRuleCount: 0,
+  guidanceSummary: null,
+  conflictResolutions: {},
+  activeJobId: null,
   steps: DEFAULT_STEPS,
   presets: [],
   lastSaved: null,
@@ -114,7 +127,6 @@ export function loadPipelineState(): PipelineState {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return DEFAULT_STATE
     const parsed = JSON.parse(raw) as Partial<PipelineState>
-    // Merge with defaults to handle new fields added after save
     return {
       ...DEFAULT_STATE,
       ...parsed,
@@ -127,12 +139,13 @@ export function loadPipelineState(): PipelineState {
         strictNegatives:{ ...DEFAULT_STATE.realism.strictNegatives,...(parsed.realism?.strictNegatives ?? {}) },
         strictBlocks:   { ...DEFAULT_STATE.realism.strictBlocks,   ...(parsed.realism?.strictBlocks   ?? {}) },
       },
-      // Reset transient step running states on reload
+      conflictResolutions: parsed.conflictResolutions ?? {},
       steps: (parsed.steps ?? DEFAULT_STEPS).map(s => ({
         ...s,
         status: s.status === 'running' ? 'queue' : s.status,
       })),
       presets: parsed.presets ?? [],
+      activeJobId: null, // always reset job on reload
     }
   } catch {
     return DEFAULT_STATE

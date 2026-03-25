@@ -16,26 +16,41 @@ import {
   type StepStatus,
   type StudioMode,
 } from '@/lib/pipeline-state'
+import {
+  createJob,
+  runOrchestrator,
+  storeJob,
+  type GenerationJob,
+  type JobMode,
+  type JobSource,
+} from '@/lib/generation-job'
+import { parseGuidanceFile, type ParsedGuidance } from '@/lib/guidance-parser'
+import { detectConflicts, applyGuidanceResolution, type Conflict, type ConflictReport, type ConflictSide } from '@/lib/conflict-engine'
+import { ConflictModal } from '@/components/pipeline/ConflictModal'
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const C = {
-  bg:       '#02050b',
-  surface:  '#06090f',
-  rail:     '#04060f',
-  border:   'rgba(255,255,255,0.07)',
-  borderHi: 'rgba(255,255,255,0.12)',
-  accent:   '#44c3a6',
-  accentDim:'rgba(68,195,166,0.15)',
-  accentBdr:'rgba(68,195,166,0.30)',
-  text:     '#e8f0ff',
-  textDim:  'rgba(255,255,255,0.45)',
-  textFaint:'rgba(255,255,255,0.22)',
-  danger:   '#ef4444',
-  warn:     '#f59e0b',
-  done:     '#22c55e',
-  purple:   '#8b5cf6',
-  purpleDim:'rgba(139,92,246,0.18)',
-  purpleBdr:'rgba(139,92,246,0.35)',
+  bg:        '#02050b',
+  surface:   '#06090f',
+  rail:      '#04060f',
+  border:    'rgba(255,255,255,0.07)',
+  borderHi:  'rgba(255,255,255,0.12)',
+  accent:    '#44c3a6',
+  accentDim: 'rgba(68,195,166,0.15)',
+  accentBdr: 'rgba(68,195,166,0.30)',
+  text:      '#e8f0ff',
+  textDim:   'rgba(255,255,255,0.45)',
+  textFaint: 'rgba(255,255,255,0.22)',
+  danger:    '#ef4444',
+  dangerDim: 'rgba(239,68,68,0.12)',
+  dangerBdr: 'rgba(239,68,68,0.30)',
+  warn:      '#f59e0b',
+  warnDim:   'rgba(245,158,11,0.12)',
+  warnBdr:   'rgba(245,158,11,0.30)',
+  done:      '#22c55e',
+  purple:    '#8b5cf6',
+  purpleDim: 'rgba(139,92,246,0.18)',
+  purpleBdr: 'rgba(139,92,246,0.35)',
 }
 
 const STEP_STATUS_COLOR: Record<StepStatus, string> = {
@@ -54,23 +69,21 @@ const STEP_STATUS_LABEL: Record<StepStatus, string> = {
 }
 
 // ─── Auto-save hook (3s debounce) ─────────────────────────────────────────────
-function useAutoSave(state: PipelineState, setState: (s: PipelineState) => void) {
+function useAutoSave(state: PipelineState, onSaved: (s: PipelineState) => void) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savedRef = useRef(false)
-
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
       const saved = savePipelineState(state)
-      setState(saved)
-      savedRef.current = true
+      onSaved(saved)
     }, 3000)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [
     state.activeName, state.outputMode, state.studioMode, state.activeModel,
     state.intent, state.scene, state.realism,
-    state.finalPrompt, state.pipelinePrompt, state.guidanceFileName,
-    state.steps, state.presets,
+    state.finalPrompt, state.pipelinePrompt,
+    state.guidanceFileName, state.guidanceContent,
+    state.conflictResolutions, state.steps, state.presets,
   ])
 }
 
@@ -80,13 +93,27 @@ export default function PipelinePage() {
   const [saveFlash, setSaveFlash] = useState(false)
   const [nameInput, setNameInput] = useState(() => loadPipelineState().activeName)
   const [presetOpen, setPresetOpen] = useState(false)
+
+  // Guidance doc parsed in memory (not persisted — only metadata persisted)
+  const [parsedGuidance, setParsedGuidance] = useState<ParsedGuidance | null>(null)
+  const [guidanceParsing, setGuidanceParsing] = useState(false)
+  const [guidanceError, setGuidanceError] = useState<string | null>(null)
+
+  // Conflict state
+  const [conflictReport, setConflictReport] = useState<ConflictReport | null>(null)
+  const [showConflictModal, setShowConflictModal] = useState(false)
+  const [pendingJobTrigger, setPendingJobTrigger] = useState<{ source: JobSource; mode: JobMode } | null>(null)
+
+  // Active job display
+  const [activeJob, setActiveJob] = useState<GenerationJob | null>(null)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-save
   useAutoSave(state, (saved) => {
     setState(saved)
     setSaveFlash(true)
-    setTimeout(() => setSaveFlash(false), 1200)
+    setTimeout(() => setSaveFlash(false), 1400)
   })
 
   const update = useCallback((patch: Partial<PipelineState>) => {
@@ -105,7 +132,198 @@ export default function PipelinePage() {
     setState(prev => ({ ...prev, realism: { ...prev.realism, ...patch } }))
   }, [])
 
-  // Save current config as named preset
+  // ── Re-run conflict detection whenever guidance or state changes ──
+  useEffect(() => {
+    if (!parsedGuidance) { setConflictReport(null); return }
+    const report = detectConflicts(state, parsedGuidance, state.conflictResolutions)
+    setConflictReport(report)
+  }, [parsedGuidance, state.realism, state.intent, state.scene, state.pipelinePrompt, state.finalPrompt, state.conflictResolutions])
+
+  // ── Guidance file upload ──
+  const handleGuidanceUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setGuidanceParsing(true)
+    setGuidanceError(null)
+    try {
+      const parsed = await parseGuidanceFile(file)
+      setParsedGuidance(parsed)
+      // Persist metadata + content to state (survives refresh)
+      setState(prev => ({
+        ...prev,
+        guidanceFileName: parsed.fileName,
+        guidanceContent: parsed.rawContent,
+        guidanceRuleCount: parsed.rules.length,
+        guidanceSummary: parsed.summary,
+        conflictResolutions: {}, // reset resolutions when new doc uploaded
+      }))
+    } catch (err) {
+      setGuidanceError(err instanceof Error ? err.message : 'Failed to parse file')
+    } finally {
+      setGuidanceParsing(false)
+    }
+    // Reset input so same file can be re-uploaded
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }, [])
+
+  const clearGuidance = useCallback(() => {
+    setParsedGuidance(null)
+    setConflictReport(null)
+    update({
+      guidanceFileName: null,
+      guidanceContent: null,
+      guidanceRuleCount: 0,
+      guidanceSummary: null,
+      conflictResolutions: {},
+    })
+  }, [update])
+
+  // ── Restore parsed guidance from persisted content on mount ──
+  useEffect(() => {
+    if (state.guidanceContent && state.guidanceFileName && !parsedGuidance) {
+      // Re-hydrate parsed guidance from stored content
+      const restored: ParsedGuidance = {
+        fileName: state.guidanceFileName,
+        fileSize: 0,
+        parsedAt: 0,
+        rawContent: state.guidanceContent,
+        rules: [],
+        summary: state.guidanceSummary ?? '',
+      }
+      // Re-extract rules from stored content
+      import('@/lib/guidance-parser').then(({ parseGuidanceFile: _ }) => {
+        // Build a synthetic File-like from stored content for rule re-extraction
+        const blob = new Blob([state.guidanceContent!], { type: 'text/plain' })
+        const syntheticFile = new File([blob], state.guidanceFileName!, { type: 'text/plain' })
+        parseGuidanceFile(syntheticFile).then(reparsed => {
+          setParsedGuidance({ ...reparsed, fileName: state.guidanceFileName!, summary: state.guidanceSummary ?? reparsed.summary })
+        }).catch(() => {
+          setParsedGuidance(restored)
+        })
+      })
+    }
+  }, []) // only on mount
+
+  // ── Conflict resolution handlers ──
+  const handleResolve = useCallback((conflictId: string, side: ConflictSide) => {
+    setState(prev => {
+      const newResolutions = { ...prev.conflictResolutions, [conflictId]: side }
+      // If guidance wins, also patch state to match
+      if (side === 'guidance' && conflictReport) {
+        const conflict = conflictReport.conflicts.find(c => c.id === conflictId)
+        if (conflict) {
+          const patch = applyGuidanceResolution(prev, conflict)
+          return { ...prev, ...patch, conflictResolutions: newResolutions }
+        }
+      }
+      return { ...prev, conflictResolutions: newResolutions }
+    })
+  }, [conflictReport])
+
+  const handleResolveAll = useCallback((side: ConflictSide) => {
+    if (!conflictReport) return
+    setState(prev => {
+      let next = { ...prev }
+      const newResolutions = { ...prev.conflictResolutions }
+      for (const conflict of conflictReport.conflicts) {
+        newResolutions[conflict.id] = side
+        if (side === 'guidance') {
+          const patch = applyGuidanceResolution(next, conflict)
+          next = { ...next, ...patch }
+        }
+      }
+      return { ...next, conflictResolutions: newResolutions }
+    })
+  }, [conflictReport])
+
+  // ── SINGLE GENERATION ENTRY POINT ─────────────────────────────────────────
+  // ALL buttons call this. No exceptions.
+  const triggerGeneration = useCallback((source: JobSource, mode: JobMode) => {
+    // Gate: block if guidance loaded and hard conflicts unresolved
+    if (conflictReport && !conflictReport.canRun) {
+      setPendingJobTrigger({ source, mode })
+      setShowConflictModal(true)
+      return
+    }
+    // Soft conflicts: show modal but allow run
+    if (conflictReport && conflictReport.unresolvedCount > 0) {
+      setPendingJobTrigger({ source, mode })
+      setShowConflictModal(true)
+      return
+    }
+    executeJob(source, mode)
+  }, [conflictReport])
+
+  const executeJob = useCallback((source: JobSource, mode: JobMode) => {
+    const realismMode = state.realism.mode === 'STRICT' || state.realism.mode === 'RAW'
+      ? 'strict' : 'balanced'
+
+    const outputType = state.outputMode === 'image' ? 'image'
+      : state.outputMode === 'video' ? 'video' : 'image_video'
+
+    const job = createJob(source, mode, {
+      prompt: state.pipelinePrompt || state.finalPrompt,
+      realismMode,
+      outputType,
+    })
+
+    storeJob(job)
+    setActiveJob(job)
+    update({ activeJobId: job.jobId })
+
+    // Reset step display
+    setState(prev => ({
+      ...prev,
+      steps: prev.steps.map(s => ({ ...s, status: 'queue' as StepStatus })),
+    }))
+
+    runOrchestrator(
+      job,
+      (updated) => {
+        setActiveJob(updated)
+        storeJob(updated)
+        // Map orchestrator step to sidebar steps
+        syncStepsFromJob(updated)
+      },
+      (completed) => {
+        setActiveJob(completed)
+        storeJob(completed)
+        setState(prev => ({
+          ...prev,
+          steps: prev.steps.map(s => ({ ...s, status: 'done' as StepStatus })),
+          activeJobId: null,
+        }))
+      },
+      (rejected) => {
+        setActiveJob(rejected)
+        storeJob(rejected)
+        setState(prev => ({
+          ...prev,
+          steps: prev.steps.map(s => ({
+            ...s,
+            status: s.status === 'running' ? 'failed' as StepStatus : s.status,
+          })),
+          activeJobId: null,
+        }))
+      }
+    )
+  }, [state, update])
+
+  // Map orchestrator step names to sidebar pipeline steps
+  const syncStepsFromJob = useCallback((job: GenerationJob) => {
+    setState(prev => ({
+      ...prev,
+      steps: prev.steps.map((s, i) => {
+        const pct = (job.stepIndex / Math.max(job.steps.length - 1, 1))
+        const stepPct = i / Math.max(prev.steps.length - 1, 1)
+        if (stepPct < pct) return { ...s, status: 'done' as StepStatus }
+        if (Math.abs(stepPct - pct) < 0.15) return { ...s, status: 'running' as StepStatus }
+        return { ...s, status: 'queue' as StepStatus }
+      }),
+    }))
+  }, [])
+
+  // ── Preset handlers ──
   const savePreset = useCallback(() => {
     const name = nameInput.trim()
     if (!name) return
@@ -143,54 +361,42 @@ export default function PipelinePage() {
     setPresetOpen(false)
   }, [])
 
-  const handleGuidanceUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) update({ guidanceFileName: file.name })
-  }, [update])
-
-  const runPipeline = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      steps: prev.steps.map(s => ({ ...s, status: 'queue' as StepStatus })),
-    }))
-    // Simulate sequential step execution
-    let delay = 400
-    DEFAULT_STEPS.forEach((_, i) => {
-      setTimeout(() => {
-        setState(prev => ({
-          ...prev,
-          steps: prev.steps.map((s, idx) =>
-            idx === i ? { ...s, status: 'running' } :
-            idx < i  ? { ...s, status: 'done'    } : s
-          ),
-        }))
-      }, delay)
-      delay += 1800
-    })
-    setTimeout(() => {
-      setState(prev => ({
-        ...prev,
-        steps: prev.steps.map(s => ({ ...s, status: 'done' })),
-      }))
-    }, delay)
-  }, [])
-
   return (
     <div style={{ display: 'flex', height: '100dvh', width: '100%', background: C.bg, overflow: 'hidden', fontFamily: "'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif" }}>
 
-      {/* ── Left Sidebar ── */}
+      {/* Conflict Modal */}
+      {showConflictModal && conflictReport && parsedGuidance && (
+        <ConflictModal
+          report={conflictReport}
+          guidance={parsedGuidance}
+          onResolve={handleResolve}
+          onResolveAll={handleResolveAll}
+          onDismiss={() => { setShowConflictModal(false); setPendingJobTrigger(null) }}
+          onRunAnyway={conflictReport.canRun && pendingJobTrigger ? () => {
+            setShowConflictModal(false)
+            executeJob(pendingJobTrigger.source, pendingJobTrigger.mode)
+            setPendingJobTrigger(null)
+          } : undefined}
+        />
+      )}
+
+      {/* Sidebar */}
       <Sidebar
         studioMode={state.studioMode}
         onStudioMode={mode => update({ studioMode: mode })}
         steps={state.steps}
         lastSaved={state.lastSaved}
         saveFlash={saveFlash}
+        activeJob={activeJob}
+        conflictCount={conflictReport?.unresolvedCount ?? 0}
+        hardConflictCount={conflictReport?.hardUnresolvedCount ?? 0}
+        onShowConflicts={() => setShowConflictModal(true)}
       />
 
-      {/* ── Main Content ── */}
+      {/* Main content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
 
-        {/* Top Bar */}
+        {/* Top bar */}
         <TopBar
           nameInput={nameInput}
           onNameInput={setNameInput}
@@ -203,13 +409,21 @@ export default function PipelinePage() {
           onOutputMode={mode => update({ outputMode: mode as OutputMode })}
           activeModel={state.activeModel}
           onModel={m => update({ activeModel: m as PipelineState['activeModel'] })}
-          onRun={runPipeline}
+          onRun={() => triggerGeneration('run_pipeline_button', 'full_pipeline')}
+          onImagesOnly={() => triggerGeneration('images_only_button', 'image_only_pipeline')}
+          conflictCount={conflictReport?.unresolvedCount ?? 0}
+          hardConflictCount={conflictReport?.hardUnresolvedCount ?? 0}
+          canRun={conflictReport?.canRun ?? true}
+          onShowConflicts={() => setShowConflictModal(true)}
         />
 
-        {/* Scrollable body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 40px' }}>
+        {/* Active job status bar */}
+        {activeJob && activeJob.status !== 'approved' && activeJob.status !== 'failed' && (
+          <JobStatusBar job={activeJob} />
+        )}
 
-          {/* Creative Setup */}
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px 40px' }}>
           <Section label="Creative Setup" sublabel="Required Before Run">
 
             {/* Studio tabs */}
@@ -249,8 +463,7 @@ export default function PipelinePage() {
               </Field>
               <Field label="Environment">
                 <Select value={state.scene.environment} onChange={v => updateScene({ environment: v })}
-                  options={['slightly messy living room','clean modern kitchen','outdoor park','coffee shop','office','bedroom','gym']}
-                  allowCustom />
+                  options={['slightly messy living room','clean modern kitchen','outdoor park','coffee shop','office','bedroom','gym']} allowCustom />
               </Field>
               <TwoCol>
                 <Field label="Time of Day">
@@ -281,13 +494,9 @@ export default function PipelinePage() {
             {/* 4. Realism Control */}
             <FieldGroup label="4. Realism Control">
               <Field label="Realism Mode">
-                <Select
-                  value={state.realism.mode}
-                  onChange={v => updateRealism({ mode: v as RealismMode })}
-                  options={['STANDARD','SOFT','STRICT','RAW']}
-                />
+                <Select value={state.realism.mode} onChange={v => updateRealism({ mode: v as RealismMode })}
+                  options={['STANDARD','SOFT','STRICT','RAW']} />
               </Field>
-
               <CheckGroup label="Imperfections">
                 {([
                   ['skinTexture','skin texture'],
@@ -301,7 +510,6 @@ export default function PipelinePage() {
                   />
                 ))}
               </CheckGroup>
-
               <CheckGroup label="Strict Negatives">
                 {([
                   ['noCinematic','no cinematic'],
@@ -315,7 +523,6 @@ export default function PipelinePage() {
                   />
                 ))}
               </CheckGroup>
-
               <CheckGroup label="Strict Blocks">
                 <CheckRow label="no cinematic"
                   checked={state.realism.strictBlocks.noCinematic}
@@ -328,43 +535,151 @@ export default function PipelinePage() {
               </CheckGroup>
             </FieldGroup>
 
-            {/* Run Controls */}
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 4 }}>
-              <button onClick={runPipeline} style={{
-                padding: '10px 20px', borderRadius: 8, border: 'none',
-                background: C.accent, color: '#000', fontSize: 13, fontWeight: 700,
-                cursor: 'pointer', letterSpacing: '0.02em',
-              }}>
+            {/* Run Controls + Guidance Upload */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => triggerGeneration('run_pipeline_button', 'full_pipeline')}
+                disabled={!!(conflictReport && conflictReport.hardUnresolvedCount > 0)}
+                style={{
+                  padding: '10px 20px', borderRadius: 8, border: 'none',
+                  background: (conflictReport && conflictReport.hardUnresolvedCount > 0)
+                    ? 'rgba(255,255,255,0.08)' : C.accent,
+                  color: (conflictReport && conflictReport.hardUnresolvedCount > 0) ? C.textDim : '#000',
+                  fontSize: 13, fontWeight: 700, cursor: (conflictReport && conflictReport.hardUnresolvedCount > 0) ? 'not-allowed' : 'pointer',
+                }}
+              >
                 Run Pipeline
               </button>
+
+              {/* Queue Pipeline Job (prompt panel trigger) */}
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => triggerGeneration('prompt_panel', 'full_pipeline')}
+                disabled={!state.pipelinePrompt.trim()}
                 style={{
                   padding: '10px 16px', borderRadius: 8,
-                  border: `1px solid ${C.purpleBdr}`,
-                  background: C.purpleDim, color: '#c4b5fd',
+                  border: `1px solid ${state.pipelinePrompt.trim() ? C.accentBdr : C.border}`,
+                  background: state.pipelinePrompt.trim() ? C.accentDim : 'transparent',
+                  color: state.pipelinePrompt.trim() ? C.accent : C.textDim,
+                  fontSize: 12, fontWeight: 600,
+                  cursor: state.pipelinePrompt.trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                Queue Pipeline Job
+              </button>
+
+              {/* Run Image Pipeline (was "Images Only") */}
+              <button
+                onClick={() => triggerGeneration('images_only_button', 'image_only_pipeline')}
+                style={{
+                  padding: '10px 16px', borderRadius: 8,
+                  border: `1px solid ${C.border}`,
+                  background: 'transparent',
+                  color: C.textDim, fontSize: 12, cursor: 'pointer',
+                }}
+              >
+                Run Image Pipeline
+              </button>
+
+              {/* Guidance upload */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={guidanceParsing}
+                style={{
+                  padding: '10px 16px', borderRadius: 8,
+                  border: `1px solid ${state.guidanceFileName ? C.purpleBdr : C.border}`,
+                  background: state.guidanceFileName ? C.purpleDim : 'transparent',
+                  color: state.guidanceFileName ? '#c4b5fd' : C.textDim,
                   fontSize: 12, fontWeight: 600, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: 6,
                 }}
               >
                 <span style={{ fontSize: 14 }}>↑</span>
-                {state.guidanceFileName ? state.guidanceFileName : 'Upload Rule / Guidance'}
+                {guidanceParsing
+                  ? 'Parsing…'
+                  : state.guidanceFileName
+                    ? state.guidanceFileName
+                    : 'Upload Rule / Guidance'}
               </button>
-              <input ref={fileInputRef} type="file" accept=".txt,.md,.pdf,.json" style={{ display: 'none' }} onChange={handleGuidanceUpload} />
               {state.guidanceFileName && (
-                <button onClick={() => update({ guidanceFileName: null })} style={{ background: 'transparent', border: 'none', color: C.textDim, fontSize: 18, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                <button onClick={clearGuidance} style={{
+                  background: 'transparent', border: 'none',
+                  color: C.textDim, fontSize: 18, cursor: 'pointer', lineHeight: 1,
+                }}>×</button>
               )}
+              <input
+                ref={fileInputRef} type="file"
+                accept=".txt,.md,.pdf,.json"
+                style={{ display: 'none' }}
+                onChange={handleGuidanceUpload}
+              />
             </div>
 
-            {/* Pipeline Prompt */}
+            {/* Guidance parse error */}
+            {guidanceError && (
+              <div style={{
+                marginBottom: 12, padding: '10px 14px', borderRadius: 8,
+                background: C.dangerDim, border: `1px solid ${C.dangerBdr}`,
+                color: C.danger, fontSize: 12,
+              }}>
+                ⚠ {guidanceError}
+              </div>
+            )}
+
+            {/* Guidance summary + conflict badge */}
+            {state.guidanceSummary && (
+              <div style={{
+                marginBottom: 16, padding: '12px 14px', borderRadius: 10,
+                background: 'rgba(139,92,246,0.08)', border: `1px solid ${C.purpleBdr}`,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#c4b5fd', letterSpacing: '0.04em' }}>
+                    GUIDANCE LOADED
+                  </span>
+                  {conflictReport && conflictReport.conflicts.length > 0 && (
+                    <button onClick={() => setShowConflictModal(true)} style={{
+                      padding: '3px 10px', borderRadius: 999,
+                      border: `1px solid ${conflictReport.hardUnresolvedCount > 0 ? C.dangerBdr : C.warnBdr}`,
+                      background: conflictReport.hardUnresolvedCount > 0 ? C.dangerDim : C.warnDim,
+                      color: conflictReport.hardUnresolvedCount > 0 ? C.danger : C.warn,
+                      fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                    } as React.CSSProperties}>
+                      {conflictReport.unresolvedCount > 0
+                        ? `${conflictReport.unresolvedCount} Conflicts — Review`
+                        : '✓ All Resolved'}
+                    </button>
+                  )}
+                  {conflictReport && conflictReport.conflicts.length === 0 && (
+                    <span style={{ fontSize: 10, color: C.done }}>✓ No conflicts</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: C.textDim }}>{state.guidanceSummary}</div>
+              </div>
+            )}
+
+            {/* Pipeline Prompt — job start input */}
             <FieldGroup label="Pipeline Prompt" sublabel="Type your job instruction to start a pipeline run">
               <textarea
                 value={state.pipelinePrompt}
                 onChange={e => update({ pipelinePrompt: e.target.value })}
                 placeholder="Describe what you want the pipeline to generate…"
                 rows={4}
-                style={{ ...textareaStyle, borderColor: state.pipelinePrompt ? C.accentBdr : undefined }}
+                style={{
+                  ...textareaStyle,
+                  borderColor: state.pipelinePrompt ? C.accentBdr : undefined,
+                }}
               />
+              {state.pipelinePrompt.trim() && (
+                <button
+                  onClick={() => triggerGeneration('prompt_panel', 'full_pipeline')}
+                  style={{
+                    alignSelf: 'flex-end', padding: '7px 16px', borderRadius: 8,
+                    border: 'none', background: C.accent, color: '#000',
+                    fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  }}
+                >
+                  Queue Pipeline Job →
+                </button>
+              )}
             </FieldGroup>
 
           </Section>
@@ -374,13 +689,75 @@ export default function PipelinePage() {
   )
 }
 
+// ─── Job Status Bar ────────────────────────────────────────────────────────────
+function JobStatusBar({ job }: { job: GenerationJob }) {
+  const isRejected = job.status === 'rejected' || job.status === 'failed'
+  const isRetrying = job.status === 'retrying'
+
+  return (
+    <div style={{
+      padding: '8px 20px', flexShrink: 0,
+      background: isRejected ? 'rgba(239,68,68,0.08)' : isRetrying ? 'rgba(245,158,11,0.08)' : 'rgba(68,195,166,0.06)',
+      borderBottom: `1px solid ${isRejected ? 'rgba(239,68,68,0.2)' : isRetrying ? 'rgba(245,158,11,0.2)' : 'rgba(68,195,166,0.15)'}`,
+      display: 'flex', alignItems: 'center', gap: 12,
+    }}>
+      {/* Animated dot */}
+      <div style={{
+        width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+        background: isRejected ? '#ef4444' : isRetrying ? '#f59e0b' : '#44c3a6',
+        animation: !isRejected ? 'pulse 1.4s ease-in-out infinite' : 'none',
+      }} />
+
+      {/* Source badge */}
+      <span style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+        padding: '2px 6px', borderRadius: 4,
+        background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)',
+      }}>
+        {job.source.replace(/_/g, ' ').toUpperCase()}
+      </span>
+
+      {/* Mode badge */}
+      <span style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+        padding: '2px 6px', borderRadius: 4,
+        background: 'rgba(139,92,246,0.12)', color: '#c4b5fd',
+      }}>
+        {job.mode.replace(/_/g, ' ').toUpperCase()}
+      </span>
+
+      {/* Current step */}
+      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
+        {isRejected ? '✗ ' : isRetrying ? '↺ ' : '→ '}
+        {job.currentStep ?? job.status}
+      </span>
+
+      {/* Step progress */}
+      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginLeft: 'auto' }}>
+        {job.stepIndex + 1} / {job.steps.length}
+      </span>
+
+      {/* QC fail reason */}
+      {job.qc.status === 'fail' && job.qc.reason && (
+        <span style={{ fontSize: 10, color: '#f59e0b' }}>{job.qc.reason}</span>
+      )}
+
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }`}</style>
+    </div>
+  )
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ studioMode, onStudioMode, steps, lastSaved, saveFlash }: {
+function Sidebar({ studioMode, onStudioMode, steps, lastSaved, saveFlash, activeJob, conflictCount, hardConflictCount, onShowConflicts }: {
   studioMode: StudioMode
   onStudioMode: (m: StudioMode) => void
   steps: PipelineStep[]
   lastSaved: number | null
   saveFlash: boolean
+  activeJob: GenerationJob | null
+  conflictCount: number
+  hardConflictCount: number
+  onShowConflicts: () => void
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
 
@@ -395,7 +772,7 @@ function Sidebar({ studioMode, onStudioMode, steps, lastSaved, saveFlash }: {
       {/* Branding */}
       <div style={{ padding: '16px 14px 12px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${C.accent}, #6366f1)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0 }}>S</div>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#44c3a6,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#fff', flexShrink: 0 }}>S</div>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.text, letterSpacing: '-0.01em' }}>StreamsAI</div>
             <div style={{ fontSize: 10, color: C.textFaint, letterSpacing: '0.06em' }}>MEDIA GENERATOR</div>
@@ -403,7 +780,7 @@ function Sidebar({ studioMode, onStudioMode, steps, lastSaved, saveFlash }: {
         </div>
       </div>
 
-      {/* Studio Toggle — Image | Video */}
+      {/* Studio Toggle */}
       <div style={{ padding: '10px 12px 8px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 3, gap: 2 }}>
           {(['image','video'] as StudioMode[]).map(m => (
@@ -414,7 +791,6 @@ function Sidebar({ studioMode, onStudioMode, steps, lastSaved, saveFlash }: {
               background: studioMode === m ? C.accentDim : 'transparent',
               color: studioMode === m ? C.accent : C.textDim,
               transition: 'all 160ms ease',
-              letterSpacing: '0.02em',
             }}>
               {m === 'image' ? 'Image' : 'Video'}
             </button>
@@ -422,17 +798,33 @@ function Sidebar({ studioMode, onStudioMode, steps, lastSaved, saveFlash }: {
         </div>
       </div>
 
+      {/* Conflict badge */}
+      {conflictCount > 0 && (
+        <button onClick={onShowConflicts} style={{
+          margin: '8px 10px 0', padding: '7px 10px', borderRadius: 8, border: 'none',
+          background: hardConflictCount > 0 ? C.dangerDim : C.warnDim,
+          color: hardConflictCount > 0 ? C.danger : C.warn,
+          fontSize: 11, fontWeight: 700, cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', gap: 6,
+          borderWidth: 1, borderStyle: 'solid',
+          borderColor: hardConflictCount > 0 ? C.dangerBdr : C.warnBdr,
+        }}>
+          <span>⚠</span>
+          <span>{conflictCount} Conflict{conflictCount > 1 ? 's' : ''}</span>
+          {hardConflictCount > 0 && <span style={{ fontSize: 9, marginLeft: 'auto' }}>BLOCKS RUN</span>}
+        </button>
+      )}
+
       {/* More Tools */}
-      <div style={{ borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ borderBottom: `1px solid ${C.border}`, marginTop: conflictCount > 0 ? 8 : 0 }}>
         <button onClick={() => setMoreOpen(v => !v)} style={{
           width: '100%', padding: '10px 14px',
           background: 'transparent', border: 'none',
           color: C.textDim, fontSize: 12, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          transition: 'color 150ms ease',
         }}>
           <span>More tools</span>
-          <span style={{ fontSize: 10, transition: 'transform 160ms ease', transform: moreOpen ? 'rotate(180deg)' : 'none' }}>▼</span>
+          <span style={{ fontSize: 10, transition: 'transform 160ms ease', display: 'inline-block', transform: moreOpen ? 'rotate(180deg)' : 'none' }}>▼</span>
         </button>
         {moreOpen && (
           <div style={{ padding: '4px 12px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -452,7 +844,7 @@ function Sidebar({ studioMode, onStudioMode, steps, lastSaved, saveFlash }: {
         <div style={{ fontSize: 9, color: C.textFaint, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '0 14px 8px', fontWeight: 600 }}>
           Pipeline Steps
         </div>
-        {steps.map((step) => {
+        {steps.map(step => {
           const color = STEP_STATUS_COLOR[step.status]
           const isRunning = step.status === 'running'
           return (
@@ -492,7 +884,7 @@ function Sidebar({ studioMode, onStudioMode, steps, lastSaved, saveFlash }: {
       <div style={{
         padding: '8px 14px', borderTop: `1px solid ${C.border}`,
         display: 'flex', alignItems: 'center', gap: 6,
-        transition: 'opacity 400ms ease', opacity: saveFlash ? 1 : 0.35,
+        opacity: saveFlash ? 1 : 0.35, transition: 'opacity 400ms ease',
       }}>
         <div style={{ width: 6, height: 6, borderRadius: '50%', background: saveFlash ? C.done : C.textFaint, transition: 'background 400ms ease' }} />
         <span style={{ fontSize: 9, color: saveFlash ? C.done : C.textFaint, letterSpacing: '0.06em' }}>
@@ -504,7 +896,7 @@ function Sidebar({ studioMode, onStudioMode, steps, lastSaved, saveFlash }: {
 }
 
 // ─── Top Bar ──────────────────────────────────────────────────────────────────
-function TopBar({ nameInput, onNameInput, onSavePreset, presets, presetOpen, onPresetOpen, onLoadPreset, outputMode, onOutputMode, activeModel, onModel, onRun }: {
+function TopBar({ nameInput, onNameInput, onSavePreset, presets, presetOpen, onPresetOpen, onLoadPreset, outputMode, onOutputMode, activeModel, onModel, onRun, onImagesOnly, conflictCount, hardConflictCount, canRun, onShowConflicts }: {
   nameInput: string
   onNameInput: (v: string) => void
   onSavePreset: () => void
@@ -517,6 +909,11 @@ function TopBar({ nameInput, onNameInput, onSavePreset, presets, presetOpen, onP
   activeModel: string
   onModel: (m: string) => void
   onRun: () => void
+  onImagesOnly: () => void
+  conflictCount: number
+  hardConflictCount: number
+  canRun: boolean
+  onShowConflicts: () => void
 }) {
   return (
     <div style={{
@@ -526,9 +923,8 @@ function TopBar({ nameInput, onNameInput, onSavePreset, presets, presetOpen, onP
       background: C.surface,
       borderBottom: `1px solid ${C.border}`,
     }}>
-
-      {/* Name Tag — input + save + preset dropdown */}
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 0 }}>
+      {/* Name tag */}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <input
           value={nameInput}
           onChange={e => onNameInput(e.target.value)}
@@ -537,28 +933,24 @@ function TopBar({ nameInput, onNameInput, onSavePreset, presets, presetOpen, onP
           style={{
             background: 'rgba(255,255,255,0.05)',
             border: `1px solid ${C.borderHi}`,
-            borderRight: 'none',
-            borderRadius: '8px 0 0 8px',
+            borderRight: 'none', borderRadius: '8px 0 0 8px',
             color: C.text, fontSize: 12, padding: '6px 10px',
             outline: 'none', width: 160,
           }}
         />
-        <button onClick={onSavePreset} title="Save preset" style={{
+        <button onClick={onSavePreset} style={{
           padding: '6px 9px',
           background: 'rgba(255,255,255,0.07)',
-          border: `1px solid ${C.borderHi}`,
-          borderRight: 'none',
+          border: `1px solid ${C.borderHi}`, borderRight: 'none',
           color: C.accent, fontSize: 11, cursor: 'pointer', fontWeight: 700,
         }}>Save</button>
-        <button onClick={onPresetOpen} title="Load preset" style={{
+        <button onClick={onPresetOpen} style={{
           padding: '6px 8px',
           background: 'rgba(255,255,255,0.07)',
           border: `1px solid ${C.borderHi}`,
           borderRadius: '0 8px 8px 0',
           color: C.textDim, fontSize: 10, cursor: 'pointer',
         }}>▼</button>
-
-        {/* Preset dropdown */}
         {presetOpen && (
           <div style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 100,
@@ -566,44 +958,40 @@ function TopBar({ nameInput, onNameInput, onSavePreset, presets, presetOpen, onP
             borderRadius: 10, minWidth: 220, boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
             overflow: 'hidden',
           }}>
-            {presets.length === 0 ? (
-              <div style={{ padding: '12px 14px', fontSize: 12, color: C.textDim }}>No saved presets yet</div>
-            ) : presets.map(p => (
-              <button key={p.id} onClick={() => onLoadPreset(p)} style={{
-                width: '100%', padding: '9px 14px', background: 'transparent',
-                border: 'none', borderBottom: `1px solid ${C.border}`,
-                color: C.text, fontSize: 12, cursor: 'pointer', textAlign: 'left',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
-                <span>{p.name}</span>
-                <span style={{ fontSize: 10, color: C.textFaint }}>{new Date(p.savedAt).toLocaleDateString()}</span>
-              </button>
-            ))}
+            {presets.length === 0
+              ? <div style={{ padding: '12px 14px', fontSize: 12, color: C.textDim }}>No saved presets yet</div>
+              : presets.map(p => (
+                <button key={p.id} onClick={() => onLoadPreset(p)} style={{
+                  width: '100%', padding: '9px 14px', background: 'transparent',
+                  border: 'none', borderBottom: `1px solid ${C.border}`,
+                  color: C.text, fontSize: 12, cursor: 'pointer', textAlign: 'left',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <span>{p.name}</span>
+                  <span style={{ fontSize: 10, color: C.textFaint }}>{new Date(p.savedAt).toLocaleDateString()}</span>
+                </button>
+              ))
+            }
           </div>
         )}
       </div>
 
       <Divider />
 
-      {/* Pipeline Mode */}
       <PillGroup
         options={[{v:'manual',label:'Manual'},{v:'auto',label:'Auto'},{v:'scheduled',label:'Scheduled'}]}
-        value={'manual'} onChange={() => {}}
-        prefix="Mode:"
+        value={'manual'} onChange={() => {}} prefix="Mode:"
       />
 
       <Divider />
 
-      {/* Output Mode */}
       <PillGroup
         options={[{v:'image',label:'Image'},{v:'video',label:'Video'},{v:'image+video',label:'Image + Video'}]}
-        value={outputMode} onChange={onOutputMode}
-        prefix="Output:"
+        value={outputMode} onChange={onOutputMode} prefix="Output:"
       />
 
       <Divider />
 
-      {/* Model pills */}
       {[{v:'dalle3',label:'DALL-E 3'},{v:'flux',label:'Flux (fal.ai)'}].map(m => (
         <button key={m.v} onClick={() => onModel(m.v)} style={{
           padding: '5px 10px', borderRadius: 999,
@@ -617,39 +1005,62 @@ function TopBar({ nameInput, onNameInput, onSavePreset, presets, presetOpen, onP
 
       <button style={{
         padding: '5px 10px', borderRadius: 999,
-        border: `1px solid ${C.warn}44`,
-        background: 'rgba(245,158,11,0.12)',
-        color: C.warn, fontSize: 11, cursor: 'pointer',
+        border: 'rgba(245,158,11,0.3) 1px solid',
+        background: 'rgba(245,158,11,0.1)', color: C.warn, fontSize: 11, cursor: 'pointer',
       }}>Diagnose + Test</button>
 
-      {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      {/* Right actions */}
-      <TopBtn>Queue</TopBtn>
-      <TopBtn>Save</TopBtn>
-      <TopBtn>Pause</TopBtn>
-      <TopBtn>Images Only</TopBtn>
+      {/* Conflict indicator */}
+      {conflictCount > 0 && (
+        <button onClick={onShowConflicts} style={{
+          padding: '5px 10px', borderRadius: 7,
+          border: `1px solid ${hardConflictCount > 0 ? C.dangerBdr : C.warnBdr}`,
+          background: hardConflictCount > 0 ? C.dangerDim : C.warnDim,
+          color: hardConflictCount > 0 ? C.danger : C.warn,
+          fontSize: 11, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 5,
+        }}>
+          <span>⚠</span>{conflictCount} Conflict{conflictCount > 1 ? 's' : ''}
+        </button>
+      )}
 
-      <button onClick={onRun} style={{
-        padding: '7px 14px', borderRadius: 8,
-        background: `linear-gradient(135deg, ${C.purple}, #6366f1)`,
-        border: 'none', color: '#fff', fontSize: 12, fontWeight: 700,
-        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-        boxShadow: '0 4px 14px rgba(139,92,246,0.35)',
-      }}>
+      {/* Run Image Pipeline (was "Images Only") */}
+      <button onClick={onImagesOnly} style={{
+        padding: '5px 10px', borderRadius: 7,
+        border: `1px solid ${C.border}`, background: 'transparent',
+        color: C.textDim, fontSize: 11, cursor: 'pointer',
+      }}>Run Image Pipeline</button>
+
+      {/* Run Full Governance Pipeline */}
+      <button
+        onClick={onRun}
+        disabled={!canRun}
+        style={{
+          padding: '7px 14px', borderRadius: 8, border: 'none',
+          background: canRun
+            ? 'linear-gradient(135deg,#8b5cf6,#6366f1)'
+            : 'rgba(255,255,255,0.08)',
+          color: canRun ? '#fff' : C.textDim,
+          fontSize: 12, fontWeight: 700,
+          cursor: canRun ? 'pointer' : 'not-allowed',
+          display: 'flex', alignItems: 'center', gap: 6,
+          boxShadow: canRun ? '0 4px 14px rgba(139,92,246,0.35)' : 'none',
+          transition: 'all 200ms ease',
+        }}
+      >
         <span>▶</span> Run Full Governance Pipeline
       </button>
     </div>
   )
 }
 
-// ─── Shared UI atoms ──────────────────────────────────────────────────────────
+// ─── Shared atoms ──────────────────────────────────────────────────────────────
 function Section({ label, sublabel, children }: { label: string; sublabel?: string; children: React.ReactNode }) {
   return (
     <div style={{ maxWidth: 680 }}>
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: C.text, letterSpacing: '-0.01em' }}>{label}</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{label}</div>
         {sublabel && <div style={{ fontSize: 11, color: C.textFaint, marginTop: 2 }}>{sublabel}</div>}
       </div>
       {children}
@@ -711,8 +1122,7 @@ function CheckGroup({ label, children }: { label: string; children: React.ReactN
 function CheckRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', padding: '3px 0' }}>
-      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
-        style={{ accentColor: C.accent, width: 13, height: 13, cursor: 'pointer' }} />
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} style={{ accentColor: C.accent, width: 13, height: 13, cursor: 'pointer' }} />
       <span style={{ fontSize: 11, color: checked ? C.text : C.textDim }}>{label}</span>
     </label>
   )
@@ -724,18 +1134,7 @@ function SmallBtn({ children, accent }: { children: React.ReactNode; accent?: bo
       padding: '6px 12px', borderRadius: 7,
       border: `1px solid ${accent ? C.accentBdr : C.border}`,
       background: accent ? C.accentDim : 'rgba(255,255,255,0.04)',
-      color: accent ? C.accent : C.textDim,
-      fontSize: 11, cursor: 'pointer', fontWeight: accent ? 600 : 400,
-    }}>{children}</button>
-  )
-}
-
-function TopBtn({ children }: { children: React.ReactNode }) {
-  return (
-    <button style={{
-      padding: '5px 10px', borderRadius: 7,
-      border: `1px solid ${C.border}`, background: 'transparent',
-      color: C.textDim, fontSize: 11, cursor: 'pointer',
+      color: accent ? C.accent : C.textDim, fontSize: 11, cursor: 'pointer',
     }}>{children}</button>
   )
 }
@@ -763,7 +1162,7 @@ function PillGroup({ options, value, onChange, prefix }: { options: {v: string; 
   )
 }
 
-const tabStyle = (active: boolean): React.CSSProperties & Record<string, unknown> => ({
+const tabStyle = (active: boolean): React.CSSProperties => ({
   padding: '6px 14px', borderRadius: 7,
   border: `1px solid ${active ? C.accentBdr : C.border}`,
   background: active ? C.accentDim : 'transparent',
@@ -774,8 +1173,8 @@ const tabStyle = (active: boolean): React.CSSProperties & Record<string, unknown
 
 const textareaStyle: React.CSSProperties = {
   width: '100%', background: 'rgba(255,255,255,0.04)',
-  border: `1px solid ${C.border}`, borderRadius: 8,
-  color: C.text, fontSize: 12, padding: '10px 12px',
+  border: `1px solid rgba(255,255,255,0.07)`, borderRadius: 8,
+  color: '#e8f0ff', fontSize: 12, padding: '10px 12px',
   outline: 'none', resize: 'vertical', lineHeight: 1.6,
   fontFamily: 'inherit', boxSizing: 'border-box',
 }
