@@ -235,7 +235,7 @@ export default function StudioPage() {
             </PanelShell>
           </div>
           <ResizeHandle onPointerDown={(e) => startDrag(e, 'center-right', leftW, centerW, dragState, setIsDragging, setActiveHandle)} active={activeHandle === 'center-right'} />
-          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <div style={{ width: 320, flexShrink: 0, overflow: 'hidden' }}>
             <PanelShell title={<div style={{ display: 'flex', gap: 8 }}><TabChip active={rightView === 'editor'} onClick={() => setRightView('editor')} label="EditorPro" /><TabChip active={rightView === 'quality'} onClick={() => setRightView('quality')} label="Quality Gate" /></div>}>
               {rightView === 'editor'
                 ? <iframe src="/editor" title="editor" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
