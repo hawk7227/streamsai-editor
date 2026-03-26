@@ -29,7 +29,7 @@ export default function StudioPage() {
     const v = numberPref('studio:centerW', 640)
     return v < 200 ? 640 : v
   })
-  const [leftOpen, setLeftOpen] = useState(true)  // always start open
+  const [leftOpen, setLeftOpen] = useState(false)  // collapsed by default — MediaEditor in center
   const [centerOpen, setCenterOpen] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [activeHandle, setActiveHandle] = useState<'left-right' | 'center-right' | null>(null)
@@ -222,26 +222,15 @@ export default function StudioPage() {
           <ResizeHandle onPointerDown={(e) => startDrag(e, 'left-right', leftW, centerW, dragState, setIsDragging, setActiveHandle)} active={activeHandle === 'left-right'} />
           <div style={{ width: actualCenter, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden', transition: isDragging ? 'none' : 'width 160ms cubic-bezier(.4,0,.2,1)' }}>
             <PanelShell
-              title="Preview"
-              toolbar={<div style={{ display: 'flex', gap: 8 }}><MiniAction onClick={stageCurrentPreview}>Stage</MiniAction><MiniAction onClick={() => setSafeZone((v) => !v)}>{safeZone ? 'Safe Zone On' : 'Safe Zone Off'}</MiniAction></div>}
+              title="Media Editor"
+              toolbar={<div style={{ display: 'flex', gap: 8 }}><MiniAction onClick={() => setCenterOpen((v) => !v)}>Collapse</MiniAction></div>}
               onCollapse={() => setCenterOpen(false)}
             >
-              <PreviewSurface
-                preview={preview}
-                device={device}
-                safeZone={safeZone}
-                onDevice={setDevice}
-                onMode={(mode) => {
-                  if (mode === 'diff' && staged[0]) setPreview({ mode: 'diff', staged: staged[0] })
-                  else if (mode === 'doc') setPreview({ mode: 'doc', content: fileContent || 'No document loaded', title: project.currentFile })
-                  else if (mode === 'idle') setPreview({ mode: 'idle' })
-                }}
-                onRouteOpen={(route) => {
-                  setProject((prev) => ({ ...prev, previewTarget: route }))
-                  setPreview({ mode: 'route', route })
-                }}
-                onApply={applyStage}
-                onDiscard={discardStage}
+              <iframe
+                src="https://streamsailive.vercel.app/pipeline/test?embed=1"
+                title="StreamsAI Media Editor"
+                allow="clipboard-write; clipboard-read; camera; microphone"
+                style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#050816' }}
               />
             </PanelShell>
           </div>
