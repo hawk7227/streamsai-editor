@@ -382,7 +382,7 @@ export default function StudioPage() {
   )
 
   return (
-    <div style={{ display: 'flex', height: '100dvh', width: '100%', background: '#02050b', overflow: 'hidden', userSelect: isDragging ? 'none' : 'auto', cursor: isDragging ? 'col-resize' : 'default' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 2147483000, display: 'flex', height: '100dvh', width: '100vw', background: '#02050b', overflow: 'hidden', userSelect: isDragging ? 'none' : 'auto', cursor: isDragging ? 'col-resize' : 'default' }}>
       {isDragging && <div style={{ position: 'fixed', inset: 0, zIndex: 9999, cursor: 'col-resize' }} />}
 
       <ToolRail
@@ -522,10 +522,12 @@ function SourceProofGate({ project, preview, device, chatReady }: { project: Act
 function hideExternalStudioContextBar() {
   if (typeof document === 'undefined') return
 
-  const nodes = Array.from(document.body.querySelectorAll('header, nav, div')) as HTMLElement[]
+  const nodes = Array.from(document.body.querySelectorAll('header, nav, div, section, aside')) as HTMLElement[]
 
   for (const node of nodes) {
-    const text = (node.textContent || '').replace(/\s+/g, ' ').trim()
+    if (node === document.body || node.id === '__next') continue
+
+    const text = (node.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase()
     const box = node.getBoundingClientRect()
 
     const looksLikeStudioContextBar =
@@ -534,24 +536,22 @@ function hideExternalStudioContextBar() {
       text.includes('FILE') &&
       text.includes('PREVIEW')
 
-    const isThinTopBar =
-      box.top <= 80 &&
-      box.height > 20 &&
-      box.height <= 80 &&
-      box.width >= window.innerWidth * 0.65
+    const isTopContextArea =
+      box.top <= 130 &&
+      box.height > 10 &&
+      box.height <= 160 &&
+      box.width >= window.innerWidth * 0.45
 
-    if (looksLikeStudioContextBar && isThinTopBar) {
+    if (looksLikeStudioContextBar && isTopContextArea) {
       node.setAttribute('data-hidden-by-studio-page', 'true')
-      node.style.display = 'none'
-      node.style.height = '0'
-      node.style.minHeight = '0'
-      node.style.maxHeight = '0'
-      node.style.overflow = 'hidden'
-      break
+      node.style.setProperty('display', 'none', 'important')
+      node.style.setProperty('height', '0', 'important')
+      node.style.setProperty('min-height', '0', 'important')
+      node.style.setProperty('max-height', '0', 'important')
+      node.style.setProperty('overflow', 'hidden', 'important')
     }
   }
 }
-
 
 function PanelShell({ children, title, toolbar, onCollapse }: { children: ReactNode; title: ReactNode; toolbar?: ReactNode; onCollapse?: () => void }) {
   return (
@@ -620,5 +620,6 @@ function startDrag(
   setIsDragging(true)
   setActiveHandle(handle)
 }
+
 
 
