@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import QualityGatePanel from '@/components/QualityGatePanel'
-import SourceProofGate from '@/components/source-proof/SourceProofGate'
 import { ToolRail } from '@/components/tool-rail/ToolRail'
 import { CompactContextBar } from '@/components/preview/CompactContextBar'
 import { PreviewSurface, type PreviewPayload } from '@/components/preview/PreviewSurface'
@@ -24,13 +23,13 @@ type ToolKey = 'new-chat' | 'search' | 'images' | 'apps' | 'research' | 'codex' 
 export default function StudioPage() {
   const [leftW, setLeftW] = useState(() => {
     const v = numberPref('studio:leftW', 430)
-    return v < 300 ? 430 : v  // reset if collapsed to unusable width
+    return v < 300 ? 430 : v  // keep the real chat usable on the left
   })
   const [centerW, setCenterW] = useState(() => {
     const v = numberPref('studio:centerW', 640)
     return v < 200 ? 640 : v
   })
-  const [leftOpen, setLeftOpen] = useState(true)  // chat open by default on the left side
+  const [leftOpen, setLeftOpen] = useState(true)  // StreamsAI chat open by default on the left
   const [centerOpen, setCenterOpen] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [activeHandle, setActiveHandle] = useState<'left-right' | 'center-right' | null>(null)
@@ -245,7 +244,6 @@ export default function StudioPage() {
           </div>
         </div>
       </div>
-      <SourceProofGate />
     </div>
   )
 }
@@ -279,3 +277,4 @@ function startDrag(e: React.PointerEvent<HTMLDivElement>, handle: 'left-right' |
   setIsDragging(true)
   setActiveHandle(handle)
 }
+
