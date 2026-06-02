@@ -12,7 +12,7 @@ const MOBILE_CHAT_URL =
   (process.env.NEXT_PUBLIC_MOBILE_CHAT_URL || '').replace(/\/$/, '') ||
   (typeof window !== 'undefined' && window.location.hostname === 'localhost'
     ? 'http://localhost:3001'
-    : 'https://streamsailive-chat-streamsai.vercel.app')
+    : 'https://streamsailive.vercel.app/streams-ai')
 
 const HANDLE_HIT = 8
 
@@ -406,7 +406,42 @@ export default function StudioPage() {
 
         <div style={{ display: 'flex', minHeight: 0, flex: 1, height: '100%', position: 'relative' }}>
           <div style={{ width: actualLeft, flexShrink: 0, overflow: 'hidden', transition: isDragging ? 'none' : 'width 160ms cubic-bezier(.4,0,.2,1)' }}>
-            </div>
+            <PanelShell
+              title="StreamsAI Chat"
+              toolbar={<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><StatusDot ready={chatReady} /><MiniMeta text="Full chat app" /></div>}
+              onCollapse={() => setLeftOpen(false)}
+            >
+              <iframe
+                ref={chatIframeRef}
+                src={MOBILE_CHAT_URL}
+                title="StreamsAI Chat"
+                allow={CHAT_IFRAME_ALLOW}
+                referrerPolicy="strict-origin-when-cross-origin"
+                onLoad={() => {
+                  setChatReady(true)
+                  setTimeout(syncChatContext, 150)
+                }}
+                style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#020611' }}
+              />
+            </PanelShell>
+          </div>
+
+          <ResizeHandle onPointerDown={(e) => startDrag(e, 'left-right', leftW, centerW, dragState, setIsDragging, setActiveHandle)} active={activeHandle === 'left-right'} />
+
+          <div style={{ width: actualCenter, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)', overflow: 'hidden', transition: isDragging ? 'none' : 'width 160ms cubic-bezier(.4,0,.2,1)' }}>
+            <PanelShell
+              title="Media Editor"
+              toolbar={<div style={{ display: 'flex', gap: 8 }}><MiniAction onClick={() => setCenterOpen((v) => !v)}>Collapse</MiniAction></div>}
+              onCollapse={() => setCenterOpen(false)}
+            >
+              <iframe
+                src="https://streamsailive.vercel.app/pipeline/test?embed=1"
+                title="StreamsAI Media Editor"
+                allow="clipboard-write; clipboard-read; camera; microphone; display-capture; fullscreen"
+                style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#050816' }}
+              />
+            </PanelShell>
+          </div>
 
           <ResizeHandle onPointerDown={(e) => startDrag(e, 'center-right', leftW, centerW, dragState, setIsDragging, setActiveHandle)} active={activeHandle === 'center-right'} />
 
@@ -434,7 +469,7 @@ function SourceProofGate({ project, preview, device, chatReady }: { project: Act
     'PATH PROVEN',
     `Route: ${route}`,
     'File: apps/web/src/app/studio/page.tsx',
-    'Left app: streamsailive-chat-streamsai',
+    'Left app: streamsailive.vercel.app/streams-ai',
     `Preview target: ${previewTarget}`,
     `Repo: ${project.owner}/${project.repo}`,
     `Branch: ${project.branch}`,
@@ -585,6 +620,7 @@ function startDrag(
   setIsDragging(true)
   setActiveHandle(handle)
 }
+
 
 
 
