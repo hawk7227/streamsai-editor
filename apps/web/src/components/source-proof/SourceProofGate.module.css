@@ -1,0 +1,128 @@
+.sourceProofGate {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 9999;
+  height: 100dvh;
+  pointer-events: none;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.isOpen {
+  width: 390px;
+}
+
+.sourceProofTab {
+  pointer-events: auto;
+  position: absolute;
+  top: 96px;
+  right: 0;
+  width: 44px;
+  height: 96px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-right: 0;
+  border-radius: 12px 0 0 12px;
+  background: rgba(2, 6, 23, 0.96);
+  color: #67e8f9;
+  font-weight: 900;
+  font-size: 10px;
+  letter-spacing: .16em;
+  writing-mode: vertical-rl;
+}
+
+.sourceProofBody {
+  pointer-events: auto;
+  height: 100%;
+  width: 390px;
+  overflow-y: auto;
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(2, 6, 23, .98), rgba(8, 13, 25, .98));
+  border-left: 1px solid rgba(148, 163, 184, .18);
+  color: #f8fafc;
+}
+
+.sourceProofTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.sourceProofTop span {
+  color: #67e8f9;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.sourceProofTop strong {
+  color: #86efac;
+  font-size: 11px;
+  border: 1px solid rgba(34, 197, 94, .32);
+  background: rgba(22, 101, 52, .22);
+  border-radius: 999px;
+  padding: 6px 8px;
+}
+
+.sourceProofBody label {
+  display: grid;
+  gap: 6px;
+  color: #bfdbfe;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.sourceProofBody select {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, .22);
+  background: rgba(15, 23, 42, .85);
+  color: #fff;
+  padding: 0 10px;
+}
+
+.sourceProofSection {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, .16);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, .42);
+}
+
+.sourceProofSection b {
+  color: #e0f2fe;
+  font-size: 12px;
+}
+
+.sourceProofSection code {
+  display: block;
+  color: #a7f3d0;
+  background: rgba(2, 6, 23, .82);
+  border: 1px solid rgba(16, 185, 129, .14);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 11px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.copyProof {
+  width: 100%;
+  height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: #67e8f9;
+  color: #02111c;
+  font-weight: 900;
+}
+
+.sourceProofRule {
+  margin-top: 12px;
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.45;
+}

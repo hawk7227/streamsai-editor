@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import QualityGatePanel from '@/components/QualityGatePanel'
+import SourceProofGate from '@/components/source-proof/SourceProofGate'
 import { ToolRail } from '@/components/tool-rail/ToolRail'
 import { CompactContextBar } from '@/components/preview/CompactContextBar'
 import { PreviewSurface, type PreviewPayload } from '@/components/preview/PreviewSurface'
@@ -12,7 +13,7 @@ const MOBILE_CHAT_URL =
   (process.env.NEXT_PUBLIC_MOBILE_CHAT_URL || '').replace(/\/$/, '') ||
   (typeof window !== 'undefined' && window.location.hostname === 'localhost'
     ? 'http://localhost:3001'
-    : 'https://streamsai-editor-mobile-chat.vercel.app')
+    : 'https://streamsailive-chat-streamsai.vercel.app')
 
 const HANDLE_HIT = 8
 
@@ -22,14 +23,14 @@ type ToolKey = 'new-chat' | 'search' | 'images' | 'apps' | 'research' | 'codex' 
 
 export default function StudioPage() {
   const [leftW, setLeftW] = useState(() => {
-    const v = numberPref('studio:leftW', 380)
-    return v < 200 ? 380 : v  // reset if collapsed to unusable width
+    const v = numberPref('studio:leftW', 430)
+    return v < 300 ? 430 : v  // reset if collapsed to unusable width
   })
   const [centerW, setCenterW] = useState(() => {
     const v = numberPref('studio:centerW', 640)
     return v < 200 ? 640 : v
   })
-  const [leftOpen, setLeftOpen] = useState(false)  // collapsed by default — MediaEditor in center
+  const [leftOpen, setLeftOpen] = useState(true)  // chat open by default on the left side
   const [centerOpen, setCenterOpen] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
   const [activeHandle, setActiveHandle] = useState<'left-right' | 'center-right' | null>(null)
@@ -215,7 +216,7 @@ export default function StudioPage() {
         <CompactContextBar project={project} previewMode={preview.mode === 'route' ? preview.route : preview.mode} deviceLabel={device === 'iphone' ? 'iPhone 14 Pro Max' : 'Desktop'} />
         <div style={{ display: 'flex', minHeight: 0, flex: 1, height: '100%' }}>
           <div style={{ width: actualLeft, flexShrink: 0, overflow: 'hidden', transition: isDragging ? 'none' : 'width 160ms cubic-bezier(.4,0,.2,1)' }}>
-            <PanelShell title="Chat" onCollapse={() => setLeftOpen(false)}>
+            <PanelShell title="StreamsAI Chat" onCollapse={() => setLeftOpen(false)}>
               <iframe ref={chatIframeRef} src={MOBILE_CHAT_URL} title="StreamsAI Chat" allow="clipboard-write; clipboard-read" style={{ width: '100%', height: '100%', border: 'none', display: 'block' }} />
             </PanelShell>
           </div>
@@ -244,6 +245,7 @@ export default function StudioPage() {
           </div>
         </div>
       </div>
+      <SourceProofGate />
     </div>
   )
 }
