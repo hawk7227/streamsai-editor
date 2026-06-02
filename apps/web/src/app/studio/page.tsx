@@ -16,6 +16,7 @@ const MOBILE_CHAT_URL =
 
 const HANDLE_HIT = 8
 
+// External studio context bar removal is handled inside this page so Chat and Preview get the extra height.
 const CHAT_IFRAME_ALLOW = [
   'accelerometer',
   'autoplay',
@@ -122,6 +123,12 @@ export default function StudioPage() {
     startCenter: number
   } | null>(null)
   const chatIframeRef = useRef<HTMLIFrameElement>(null)
+
+  useEffect(() => {
+    hideExternalStudioContextBar()
+    const timer = window.setTimeout(hideExternalStudioContextBar, 250)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   const actualLeft = leftOpen ? leftW : 0
   const actualCenter = centerOpen ? centerW : 0
@@ -510,6 +517,41 @@ function SourceProofGate({ project, preview, device, chatReady }: { project: Act
     </div>
   )
 }
+
+
+function hideExternalStudioContextBar() {
+  if (typeof document === 'undefined') return
+
+  const nodes = Array.from(document.body.querySelectorAll('header, nav, div')) as HTMLElement[]
+
+  for (const node of nodes) {
+    const text = (node.textContent || '').replace(/\s+/g, ' ').trim()
+    const box = node.getBoundingClientRect()
+
+    const looksLikeStudioContextBar =
+      text.includes('PROJECT STREAMSAI-EDITOR') &&
+      text.includes('BRANCH MAIN') &&
+      text.includes('FILE') &&
+      text.includes('PREVIEW')
+
+    const isThinTopBar =
+      box.top <= 80 &&
+      box.height > 20 &&
+      box.height <= 80 &&
+      box.width >= window.innerWidth * 0.65
+
+    if (looksLikeStudioContextBar && isThinTopBar) {
+      node.setAttribute('data-hidden-by-studio-page', 'true')
+      node.style.display = 'none'
+      node.style.height = '0'
+      node.style.minHeight = '0'
+      node.style.maxHeight = '0'
+      node.style.overflow = 'hidden'
+      break
+    }
+  }
+}
+
 
 function PanelShell({ children, title, toolbar, onCollapse }: { children: ReactNode; title: ReactNode; toolbar?: ReactNode; onCollapse?: () => void }) {
   return (
